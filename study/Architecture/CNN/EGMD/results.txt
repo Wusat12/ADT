@@ -1,0 +1,9 @@
+Best result config: {'num_epochs': 100, 'batch_size': 128, 'train_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/e-gmd-v1.0.0/egmd_train.pt')], 'val_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/e-gmd-v1.0.0/egmd_validation.pt')], 'transforms': {'mean': tensor([0.0720]), 'std': tensor([0.1629])}, 'lr': 0.004522622377259455, 'weight_decay': 0.0031672572804972337, 'optimizer': <class 'torch.optim.adamw.AdamW'>, 'Model': <class 'models.CNN'>, 'parameters': {'num_convs': 3, 'num_layers': 2, 'hidden_size': 144}, 'device': 'cuda:0', 'seed': 1752924906}
+Best result final validation loss: 0.4891923138491559
+Best result final validation micro F1: 0.9129548072814941
+Best result final validation macro F1: 0.9087827801704407
+Best result final validation class F1: [0.9176145195960999, 0.9170160889625549, 0.9233233332633972, 0.9134501814842224, 0.8725098967552185]
+ ---------- Evaluation of best perfoming model ---------- 
+Micro F1: 0.8839
+Macro F1: 0.8920
+Class F1: ['0.8740', '0.8819', '0.9441', '0.8817', '0.8782']

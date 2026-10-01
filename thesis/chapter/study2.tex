@@ -1,0 +1,117 @@
+\chapter{Dataset Study}\label{Study2}
+
+The primary objective of this study is to investigate how different datasets, and their unique characteristics, influence model performance, both within-domain and under \gls{OOD} conditions. This insight can help guide how existing datasets are best utilized or combined, and how future datasets might be intelligently constructed to improve model performance and generalization in \acrfull{ADT} and \acrfull{DTM}.
+
+To isolate the effect of dataset composition, all models in this study use the \acrfull{CRNN} architecture, identified in the previous chapter as the most effective for \gls{ADT}.
+
+\section{Methodology}
+
+I train \acrshort{CRNN} models on various combinations of the four main datasets: ENST+MDB, E-GMD, Slakh, and ADTOF-YT. Dataset combinations are treated as unions, with one training epoch corresponding to a full pass over all included datasets. Each trained model is then evaluated not only on the test split(s) of the dataset(s) it was trained on, but also on all other dataset test sets, including the unseen SADTP dataset, to measure \gls{OOD} generalization.
+
+To strike a balance between coverage and feasibility, I strategically select 10 dataset combinations. These are chosen to provide meaningful insight into how different dataset properties affect generalization, while avoiding redundant experiments with diminishing returns.
+
+\section{Results}
+
+\begin{table}[H]
+    \centering
+    \hspace*{-1.0cm}
+    \resizebox{1.13\linewidth}{!}{%
+    \begin{tabular}{l|ccccc}
+        Training Datasets & ENST+MDB & E-GMD & Slakh & ADTOF-YT & SADTP      \\
+        \hline
+        ENST+MDB	& 0.81	& \cellcolor{blue!5} 0.59	& \cellcolor{blue!5} 0.53	& \cellcolor{blue!5} 0.60	& \cellcolor{blue!5} 0.42 \\
+        E-GMD	& \cellcolor{blue!5} 0.55	& \textbf{0.90}	& \cellcolor{blue!5} 0.44	& \cellcolor{blue!5} 0.42	& \cellcolor{blue!5} 0.28 \\
+        Slakh	& \cellcolor{blue!5} 0.80	& \cellcolor{blue!5} 0.73	& \textbf{0.90}	& \cellcolor{blue!5} 0.59	& \cellcolor{blue!5} 0.48 \\
+        ADTOF-YT	& \cellcolor{blue!5} 0.84	& \cellcolor{blue!5} 0.69	& \cellcolor{blue!5} \underline{0.65}	& 0.93	& \cellcolor{blue!5} 0.60 \\
+        \hline
+        ENST+MDB + Slakh	& 0.84	& \cellcolor{blue!5} 0.73	& \textbf{0.90}	& \cellcolor{blue!5} \underline{0.63}	& \cellcolor{blue!5} 0.48 \\
+        ENST+MDB + ADTOF-YT	& 0.86	& \cellcolor{blue!5} 0.70 	& \cellcolor{blue!5} 0.63	& 0.94	& \cellcolor{blue!5} \textbf{\underline{0.62}} \\
+        Slakh + ADTOF-YT	& \cellcolor{blue!5} \underline{0.86}	& \cellcolor{blue!5} 0.72	& \textbf{0.90}	& \textbf{0.97}	& \cellcolor{blue!5} \textbf{\underline{0.62}} \\
+        \hline
+        ENST+MDB + Slakh + ADTOF-YT	& \textbf{0.88}	& \cellcolor{blue!5} \underline{0.74}	& 0.89	& 0.95	& \cellcolor{blue!5} 0.61 \\
+        E-GMD + Slakh + ADTOF-YT	& \cellcolor{blue!5} 0.85	& \textbf{0.90} 	& 0.89	& 0.93	& \cellcolor{blue!5} 0.61 \\
+        \hline
+        ENST+MDB + E-GMD + Slakh + ADTOF-YT	& 0.87	& 0.89	& \textbf{0.90} 	& 0.93	& \cellcolor{blue!5} \textbf{\underline{0.62}} \\
+    \end{tabular}%
+    }
+    \caption{Micro F1-scores for a \acrlong{CRNN} trained on various dataset combinations and evaluated across all datasets. \textbf{Bold} values represent the highest score achieved for that dataset. \underline{Underlined} values represent the highest score achieved in \acrfull{OOD} evaluation for that dataset. Cells shaded in \colorbox{blue!10}{light blue} indicate \acrshort{OOD} evaluations.}
+    \label{DatasetResultsTable}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{l|cccc}
+        Model & ENST+MDB & E-GMD & Slakh & ADTOF-YT      \\
+        \hline
+        Slakh + ADTOF-YT & \cellcolor{blue!5} 0.86	& \cellcolor{blue!5} 0.72 & \textbf{0.90}	& \textbf{0.97} \\
+        ENST+MDB + Slakh + ADTOF-YT & \textbf{0.88}	& 0.74 & \cellcolor{blue!5} 0.89	& 0.95 \\
+        E-GMD + Slakh + ADTOF-YT & \cellcolor{blue!5} 0.85 & \textbf{0.90} & 0.89 & 0.93 \\
+        \hline
+        OaF-Drums~\cite{callender2020improvingperceptualqualitydrum} & \cellcolor{blue!5} 0.77/$\times$* & 0.83 & $\times$ & $\times$ \\
+        \hline
+        MT3 (mixture)~\cite{gardner2022mt3multitaskmultitrackmusic} & $\times$ & $\times$ & 0.76 & $\times$ \\
+        \hline
+        YPTF.MoE+M~\cite{chang2024yourmt3+} & 0.87/$\times$** & $\times$ & 0.85 & $\times$ \\
+        \hline
+        ADTOF-RGW + ADTOF-YT~\cite{signals4040042} & \cellcolor{blue!5}0.78/0.81*** & $\times$ & $\times$ & 0.85 \\
+    \end{tabular}
+    \caption{Micro F1-scores for selected \acrlong{CRNN} models from this dataset study, compared with the best-performing models reported in related literature. \textbf{Bold} values represent the highest score achieved for that dataset. Cells shaded in \colorbox{blue!10}{light blue} indicate \acrshort{OOD} evaluations. \newline
+    (*) Callender et al. evaluate only on ENST-Drums, using isolated drum stems in a \gls{DTD} setting and a different test split~\cite{callender2020improvingperceptualqualitydrum}. \newline
+    (**) Chang et al. evaluate only ENST-Drums, also using a different test split~\cite{chang2024yourmt3+}. \newline
+    (***) Zehren et al. report separate scores for ENST-Drums and MDB Drums using different test splits~\cite{signals4040042}.
+    }
+    \label{DatasetComparisonTable}
+\end{table}
+
+\section{Discussion}
+
+The results from the dataset study, summarized in Table~\ref{DatasetResultsTable} reveal important insights into how dataset composition affects model generalization. Notably, these findings demonstrate that strategically combining \gls{ADT} datasets can significantly improve both within-domain and \acrfull{OOD} generalization performance.
+
+Firstly, it is evident that each dataset yields strong performance on test splits drawn from the same distribution as its training data, but substantially lower performance under \gls{OOD} conditions. In other words, all models exhibit a noticeable \textit{transfer gap}, a decline in performance when evaluated outside their training domain. This behaviour suggests that the datasets differ sufficiently in their characteristics to introduce meaningful domain shifts, which in turn hinder generalization.
+
+This generalization penalty appears relatively consistent across most datasets, with the exception of models trained on E-GMD (discussed in a later paragraph). Most of the best-performing \gls{OOD} results fall within a micro F1-score range of $0.6$ to $0.7$, underscoring the difficulty of cross-domain generalization in \gls{ADT}. A notable outlier is the ENST+MDB test set, where the model trained on Slakh+ADTOF-YT achieves a remarkably high \gls{OOD} F1-score of $0.86$, nearly matching its best within-domain score of $0.88$. 
+
+I hypothesize that this unusually small transfer gap can be attributed to the exceptional annotation quality of ENST+MDB. Unlike the other datasets, which may contain alignment errors or inconsistencies, ENST+MDB consists of highly accurate and precisely aligned \gls{DTM} annotations. This likely makes it easier for models trained on other datasets to demonstrate their learned capabilities when evaluated on ENST+MDB, whereas noisier test sets might obscure such strengths. As a result, performance on ENST+MDB may reflect model competence more transparently than other datasets.
+
+Another important observation concerns the E-GMD dataset. Unlike the others, E-GMD is a \acrfull{DTD} dataset containing only isolated drum stems, without any melodic accompaniment. Despite its large size, models solely trained on E-GMD generalize poorly to other datasets. In fact, it performs worst across all \gls{OOD} evaluations, with F1-scores as low as $0.28$ when evaluated on SADTP. This highlights a significant transfer gap between \gls{DTD} and \gls{DTM} tasks, suggesting that training on isolated drum tracks does not readily transfer to full musical mixtures. 
+
+However, it is worth noting that E-GMD achieves the highest within-domain performance when evaluated on its own test set. This contrast reinforces the distinction between \gls{DTD} and \gls{DTM} as separate problem formulations. It also suggests that models trained on one task may not be directly applicable to the other.
+
+Building on this observation, we can consider this reverse relationship, how well models trained on \gls{DTM} datasets perform on the \gls{DTD} task. Interestingly, the \gls{OOD} performance of models trained on \gls{DTM} datasets when evaluated on E-GMD is comparable to that their performance on other unseen \gls{DTM} datasets. This supports the hypothesis that \gls{DTM} may encompass \gls{DTD} in terms of task complexity. In other words, while \gls{DTM} poses an additional challenge due to the presence of melodic accompaniment, it may equip models with more generalizable skills, allowing them to perform reasonably well on \gls{DTD} task without explicit exposure.
+
+I argue that this asymmetry stems from the structural relationship between the two tasks. \gls{DTD} can be seen as a strict subset of \gls{DTM}, since \gls{DTM} datasets often include passages where drums play in isolation (e.g., drum solos), whereas \gls{DTD} datasets never include accompaniment. A model trained on \gls{DTM} can thus learn to transcribe drums both in isolation and in mixture, while a model trained solely on \gls{DTD} lacks exposure to the contextual variability needed for generalization to \gls{DTM}. This may explain why \gls{DTM}-trained models exhibit some degree of zero-shot generalization to \gls{DTD}, whereas the reverse does not hold.
+
+One result that merits further discussion is the observed correlation between high performance on ADTOF-YT and high \gls{OOD} performance on SADTP. Models that perform well on the ADTOF-YT test split also tend to achieve relatively high F1-scores when evaluated on SADTP. Given the crowdsourced nature of ADTOF-YT and the fact that SADTP consists of real-time performed contemporary music tracks, there may be a degree of distributional overlap that explains this trend.
+
+However, I hypothesize that this generalization ability does not arise from direct overlap in audio content, but rather from the heterogeneity inherent in the ADTOF-YT dataset. Because it was constructed through crowdsourcing, ADTOF-YT includes recordings from a broad range of sources, audio quality, and playing styles. This diversity likely results in a more varied training distribution, one that better captures the domain complexity found in real-world, user-generated datasets like SADTP.
+
+By contrast, the other datasets used in this study are significantly more homogeneous. ENST+MDB consists of a small group of professional drummers recorded in controlled, studio environments. E-GMD and Slakh are both fully synthesized, lacking the variability of live performances or real acoustic conditions. This domain uniformity likely limits their ability to generalize, especially when transitioning from synthetic or curated domains to more realistic ones.
+
+This interpretation aligns with prior findings on the so-called synthetic-to-real transfer gap, a well-documented challenge in both \gls{ADT} and other fields~\cite{zehren2024analyzingreducingsynthetictorealtransfer}. Based on these observations, I argue that dataset heterogeneity, particularly when achieved through crowdsourcing, is an invaluable asset for improving model generalization. Providing that data quality is maintained, crowdsourcing offers a practical and effective means of capturing real-world variability, and should be prioritized in the construction of future \gls{ADT} and \gls{DTM} datasets.
+
+An important observation is that the best-performing models in this study, across nearly all \gls{DTM} datasets, are those trained on combinations of multiple datasets rather than on a single dataset. For example, in Table~\ref{DatasetResultsTable}, expanding ADTOF-YT with Slakh increases its within-domain micro F1-score from $0.93$ to $0.97$. Similarly, expanding ENST+MDB with both Slakh and ADTOF-YT leads to a more significant within-domain performance increase from $0.81$ to $0.88$. The exceptions are the E-GMD and Slakh datasets, where the highest micro F1-scores are achieved when trained solely on the respective dataset. This suggests that, in many cases, expanding the training data to include additional datasets enhances within-domain performance.
+
+This finding might seem counter-intuitive: adding data from other domains introduces distributional variation, which one might expect to dilute the relevance of the training data for the target domain. However, the results show that this dilution does not necessarily harm performance, but often improves it. Broader training data appears to help the model learn more generalizable features, even when evaluated on its source domain. 
+
+This benefit, however, is not universal. In some cases, performance declines when additional datasets are introduced. For example, the ADTOF-YT dataset achieves its highest micro F1-score ($0.97$) when trained jointly with Slakh, but performance drops to $0.94$ when ENST+MDB is added, and further to $0.93$ when E-GMD is included. This suggests that expanding the dataset distribution can occasionally reduce on-domain performance, especially when the added data differs strongly in characteristics.
+
+Interestingly, the inclusion of datasets of less complexity, such as \gls{DTD} tasks through E-GMD, does not substantially impair \gls{OOD} generalization. While models trained on \gls{DTM} datasets may see a slight drop in within-domain accuracy when augmented with \gls{DTD} data, their performance on other domains remains relatively stable. This indicates that heterogeneity in training data can still be beneficial for generalization, even when the added data stems from a simpler task formulation.
+
+Secondly, take a look at the model trained on the largest dataset combination, using all available datasets. This model performs consistently strong across all evaluations, matching the top results for two of the datasets, Slakh and SADTP. This supports the idea that increasing dataset size tends to improve a model's ability to generalize, in line with findings from prior work~\cite{signals4040042}. 
+
+Based on this, I suggest that future \gls{ADT} datasets should aim to include a wide variety of examples, as broader training data often helps models generalize better. This also reinforces my earlier argument about the value of crowdsourced data, highlighting how diversity in the training domain can lead to more robust performance. That said, if the goal is to maximize performance in a specific domain, it might still be beneficial to tailor the training data more carefully to match the intended use case.
+
+Lastly, in Table~\ref{DatasetComparisonTable}, I compare my best-performing models with results reported in other literature. There is not much prior work that evaluate these specific datasets, so this comparison offers some useful perspective.
+
+Gardner et al.'s MT3~\cite{gardner2022mt3multitaskmultitrackmusic} and Chang et al.'s YPTF.MOE+M~\cite{chang2024yourmt3+} are general-purpose \gls{AMT} models designed to transcribe multiple instruments beyond just drums. Both report results using the Onset F1-score, which  is equivalent to the micro F1-score used in this thesis. Zehren et al.'s ADTOF-RGW + ADTOF-YT model~\cite{signals4040042} is more directly comparable, as it is trained specifically for \gls{DTM}.
+
+Across E-GMD, Slakh, and ADTOF-YT, my models outperform these previous approaches by a clear margin. The Slakh+ADTOF-YT model in particular stands out, reaching an F1-score of $0.97$ on ADTOF-YT. For ENST+MDB, the comparison is less straightforward due to the different dataset splits and setups, with literature often keeping ENST-Drums and MDB Drums both disjoint datasets and in-full, using the whole dataset as a test split. However, disregarding that, my best-performing model, ENST+MDB+Slakh+ADTOF-YT, can be said to seem comparable in ENST+MDB performance to that of Chang et al.'s YPTF.MOE+M~\cite{chang2024yourmt3+}. 
+
+Altogether, I argue that these results support the claim that combining well-selected datasets with a suitable architecture leads to models that perform at or above the current state of the art within \gls{ADT} and \gls{DTM}. Comparing my models to those in related work helps put both their performance and mine into perspective, and demonstrates that the dataset choices and training strategies I've employed make a meaningful impact.
+
+As in the previous study, it is important to acknowledge the potential sources of variability that may influence these results. Factors such as random weight initialization, stochastic hyperparameter selection, and dataset-specific artifacts can all impact model performance. However, the methodological choices applied, such as training multiple models per experiment, using consistent data splits, and averaging over batches, help reduce the influence of such randomness.
+
+It should also be noted that all models in this study use the \acrfull{CRNN} architecture, which was selected based on its performance in the previous architecture study. While this choice was made to isolate the effect of dataset composition on an architecture proven effective for the \gls{ADT} task, it inevitably introduces a form of architectural bias. Different architectures may interact with the datasets in different ways, potentially leading to different generalization behaviours. Nonetheless, given the \gls{CRNN}'s strong and consistent performance across datasets, I argue that the results observed here still provide meaningful insight into how dataset choices influence performance and generalization in \gls{ADT}.
+
+In summary, I conclude that the results strongly support the hypothesis that combining datasets with diverse characteristics, particularly larger, more varied, and ideally crowdsourced datasets, significantly improves model performance on \gls{ADT} tasks. When the domain and complexity of the training data match the task at hand, models not only perform better within-domain but also generalize more effectively to \acrfull{OOD} data. Paired with a well-suited architecture, such as the \acrshort{CRNN}, this approach yields models that compete with or exceed the current state of the art. Finally, these findings also suggest a hierarchical relationship between \gls{ADT} tasks: models trained on \gls{DTM} data generalize reasonably well to \gls{DTD}, but not necessarily the other way around. 

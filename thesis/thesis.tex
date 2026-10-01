@@ -1,0 +1,66 @@
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
+%----------------------------------------------------------------------------------------
+\documentclass[12pt,oneside,final,a4paper]{report}
+
+% Import all packages from generators/imports
+\usepackage{generators/imports}
+
+% Create every glossary entry
+\input{generators/glossary}
+
+% Begin the document
+\begin{document}
+
+% Include the front page and the abstract
+\include{generators/frontpage}
+\include{generators/abstract}
+
+% After the abstract, set the thesis formatting
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\setlength{\parskip}{0.5cm plus4mm minus3mm} 
+
+% Include the tale of contents
+\tableofcontents 
+
+\include{chapter/introduction}
+
+\include{chapter/background}
+
+\include{chapter/architectures}
+
+\include{chapter/datasets}
+
+\include{chapter/methods}
+
+\include{chapter/study1}
+
+\include{chapter/study2}
+
+\include{chapter/conclusion}
+
+% Include more chapters as required.
+%%=========================================
+
+% Print glossary containing Acronyms and Abbreviations
+\printnoidxglossary[title=List of Acronyms and Abbreviations, type=\acronymtype]
+
+% Include more appendices as required.
+%%=========================================
+\clearpage
+\addcontentsline{toc}{chapter}{Bibliography}
+\bibliographystyle{generators/myplainnat}
+\bibliography{generators/refs}
+
+\appendix
+\titleformat{\chapter}[display]
+  {\vspace*{-30pt}\normalfont\large\bfseries}% <- font for label "Appendix A", default \huge
+  {\chaptertitlename\ \thechapter}
+  {10pt}
+  {\large}% <- font for title, default \Huge
+
+\include{generators/appendix-a}
+\include{generators/appendix-b}
+
+\end{document}

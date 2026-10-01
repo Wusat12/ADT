@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" width="49.27mm" height="14.73mm" viewBox="8.5358 0.0000 28.0391 8.3833">
+<style type="text/css">
+<![CDATA[
+tspan { white-space: pre; }
+]]>
+</style>
+<g transform="translate(8.5358, 6.0500)">
+<line stroke-linejoin="round" stroke-linecap="round" stroke-width="0.1000" stroke="currentColor" x1="0.0500" y1="0" x2="27.9891" y2="0"/>
+</g>
+<g transform="translate(8.5358, 5.0500)">
+<line stroke-linejoin="round" stroke-linecap="round" stroke-width="0.1000" stroke="currentColor" x1="0.0500" y1="0" x2="27.9891" y2="0"/>
+</g>
+<g transform="translate(8.5358, 4.0500)">
+<line stroke-linejoin="round" stroke-linecap="round" stroke-width="0.1000" stroke="currentColor" x1="0.0500" y1="0" x2="27.9891" y2="0"/>
+</g>
+<g transform="translate(8.5358, 3.0500)">
+<line stroke-linejoin="round" stroke-linecap="round" stroke-width="0.1000" stroke="currentColor" x1="0.0500" y1="0" x2="27.9891" y2="0"/>
+</g>
+<g transform="translate(8.5358, 2.0500)">
+<line stroke-linejoin="round" stroke-linecap="round" stroke-width="0.1000" stroke="currentColor" x1="0.0500" y1="0" x2="27.9891" y2="0"/>
+</g>
+<g transform="translate(36.3849, 4.0500)">
+<rect x="0.0000" y="-2.0000" width="0.1900" height="4.0000" ry="0.0000" fill="currentColor"/>
+</g>
+<g transform="translate(27.5366, 0.2400)">
+<polygon stroke-linejoin="round" stroke-linecap="round" stroke-width="0.0800" fill="currentColor" stroke="currentColor" points="7.6026 -0.2000 7.6026 0.2000 0.0400 0.2000 0.0400 -0.2000"/>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(21.4790, 7.0500)">
+<polygon stroke-linejoin="round" stroke-linecap="round" stroke-width="0.0800" fill="currentColor" stroke="currentColor" points="2.4692 0.8000 2.4692 1.2000 0.0400 0.2000 0.0400 -0.2000"/>
+</g>
+</g>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:12:12:13">
+<g transform="translate(16.4706, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:18:8:9">
+<g transform="translate(16.4706, 5.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M218 136c66 0 108 -36 108 -89c0 -89 -113 -183 -218 -183c-66 0 -108 36 -108 89c0 89 113 183 218 183z" fill="currentColor"/>
+</g>
+</a>
+<g transform="translate(8.6658, 4.0500)">
+<path transform="scale(0.0040, -0.0040)" d="M490 -250h-92c-6 0 -10 4 -10 10v480c0 6 4 10 10 10h92c6 0 10 -4 10 -10v-480c0 -6 -4 -10 -10 -10zM270 -250h-93c-6 0 -10 4 -10 10v480c0 6 4 10 10 10h93c6 0 10 -4 10 -10v-480c0 -6 -4 -10 -10 -10z" fill="currentColor"/>
+</g>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:9:4:5">
+<g transform="translate(12.8658, 4.0500)">
+<path transform="scale(0.0040, -0.0040)" d="M196 117h117c0 -48 27 -94 72 -94c8 0 12 -5 12 -11s-4 -12 -12 -12c-44 0 -87 13 -131 13s-87 -13 -131 -13c-8 0 -12 6 -12 12s4 11 12 11c45 0 73 46 73 94zM-2 148c0 12 140 143 140 336c0 10 7 19 16 16c23 -7 47 -13 71 -13s48 6 71 13c14 4 23 -9 17 -16
+l-284 -330h167v131c0 34 34 27 68 72c22 30 23 56 36 56c6 0 13 -5 13 -14v-245h72c10 0 15 -7 15 -14s-5 -15 -15 -15h-72v-8h-117v8h-167c-23 0 -31 14 -31 23z" fill="currentColor"/>
+</g>
+<g transform="translate(12.8658, 6.0660)">
+<path transform="scale(0.0040, -0.0040)" d="M196 117h117c0 -48 27 -94 72 -94c8 0 12 -5 12 -11s-4 -12 -12 -12c-44 0 -87 13 -131 13s-87 -13 -131 -13c-8 0 -12 6 -12 12s4 11 12 11c45 0 73 46 73 94zM-2 148c0 12 140 143 140 336c0 10 7 19 16 16c23 -7 47 -13 71 -13s48 6 71 13c14 4 23 -9 17 -16
+l-284 -330h167v131c0 34 34 27 68 72c22 30 23 56 36 56c6 0 13 -5 13 -14v-245h72c10 0 15 -7 15 -14s-5 -15 -15 -15h-72v-8h-117v8h-167c-23 0 -31 14 -31 23z" fill="currentColor"/>
+</g>
+</a>
+<g transform="translate(17.7098, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+<g transform="translate(16.5356, 4.0500)">
+<rect x="-0.0650" y="1.6861" width="0.1300" height="2.6472" ry="0.0400" fill="currentColor"/>
+</g>
+<g transform="translate(17.6448, 0.2400)">
+<polygon stroke-linejoin="round" stroke-linecap="round" stroke-width="0.0800" fill="currentColor" stroke="currentColor" points="7.4776 -0.2000 7.4776 0.2000 0.0400 0.2000 0.0400 -0.2000"/>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:15:12:13">
+<g transform="translate(18.9748, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(20.2140, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:12:12:13">
+<g transform="translate(21.4790, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:20:8:9">
+<g transform="translate(21.4790, 3.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M218 136c66 0 108 -36 108 -89c0 -89 -113 -183 -218 -183c-66 0 -108 36 -108 89c0 89 113 183 218 183z" fill="currentColor"/>
+</g>
+</a>
+<g transform="translate(22.7182, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+<g transform="translate(21.5440, 4.0500)">
+<rect x="-0.0650" y="-0.3139" width="0.1300" height="3.3398" ry="0.0400" fill="currentColor"/>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:15:12:13">
+<g transform="translate(23.8582, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:23:8:9">
+<g transform="translate(23.8582, 5.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M218 136c66 0 108 -36 108 -89c0 -89 -113 -183 -218 -183c-66 0 -108 36 -108 89c0 89 113 183 218 183z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(25.0974, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(23.9232, 4.0500)">
+<rect x="-0.0650" y="1.6861" width="0.1300" height="2.2880" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:12:12:13">
+<g transform="translate(26.3624, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:24:8:9">
+<g transform="translate(26.3624, 5.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M218 136c66 0 108 -36 108 -89c0 -89 -113 -183 -218 -183c-66 0 -108 36 -108 89c0 89 113 183 218 183z" fill="currentColor"/>
+</g>
+</a>
+<g transform="translate(27.6016, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+<g transform="translate(26.4274, 4.0500)">
+<rect x="-0.0650" y="1.6861" width="0.1300" height="2.6472" ry="0.0400" fill="currentColor"/>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:15:12:13">
+<g transform="translate(28.8666, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(30.1058, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:12:12:13">
+<g transform="translate(31.3708, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+<g color="rgb(100.0000%, 0.0000%, 0.0000%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:27:8:9">
+<g transform="translate(31.3708, 3.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M218 136c66 0 108 -36 108 -89c0 -89 -113 -183 -218 -183c-66 0 -108 36 -108 89c0 89 113 183 218 183z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g transform="translate(32.6100, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+<g color="rgb(100.0000%, 0.0000%, 0.0000%)">
+<g transform="translate(31.4358, 4.0500)">
+<rect x="-0.0650" y="-0.3139" width="0.1300" height="3.3139" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<a style="color:inherit;" xlink:href="textedit:///Users/runarfosse/Desktop/OneDrive%20-%20University%20of%20Bergen/Master%20Thesis/thesis/lilypond/example_prediction.ly:15:12:13">
+<g transform="translate(33.8750, 2.5500)">
+<path transform="scale(0.0040, -0.0040)" d="M163 36l119 97c3 2 6 3 9 3s7 -1 10 -3l20 -16c3 -3 5 -8 5 -12s-2 -9 -5 -12l-115 -93l115 -93c3 -3 5 -8 5 -12s-2 -9 -5 -12l-20 -16c-3 -2 -7 -3 -10 -3s-6 1 -9 3l-119 97l-119 -97c-3 -2 -6 -3 -9 -3s-7 1 -10 3l-20 16c-3 3 -5 8 -5 12s2 9 5 12l115 93l-115 93
+c-3 3 -5 8 -5 12s2 9 5 12l20 16c3 2 7 3 10 3s6 -1 9 -3z" fill="currentColor"/>
+</g>
+</a>
+</g>
+<g color="rgba(100.0000%, 0.0000%, 0.0000%, 53.3333%)">
+<g transform="translate(35.1143, 4.0500)">
+<rect x="-0.0650" y="-3.8100" width="0.1300" height="1.8896" ry="0.0400" fill="currentColor"/>
+</g>
+</g>
+</svg>

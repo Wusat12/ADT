@@ -1,0 +1,30 @@
+\begin{tikzpicture}
+
+\node[
+    label=north:{\large{Music}}
+] (music) at (-5.5, 0) {
+    \begin{tikzpicture}
+        \node at (0, 0) {\includegraphics[scale=0.06]{figures/speaker.png}};
+        \node [rotate=30, scale=1.6] at (1.1, 0.85) {\AAcht};
+        \node [rotate=-30, scale=1.2] at (1, -0.75) {\Acht};
+    \end{tikzpicture}
+    };
+
+\node[
+    label={[label distance=1.08em]north:{\large{Deep Learning}}},
+    rectangle,
+    draw,
+    thick,
+    minimum height=5em,
+    minimum width=10em,
+] (nn) at (0, 0) {\large{Neural Network}};
+
+\node[
+    label={[label distance=1.08em]north:{\large{Transcription}}},
+    minimum height=5em,
+] (transcription) at (5.5, 0) {\includegraphics[scale=1.0]{lilypond/amt.cropped.pdf}};
+
+\draw[->, thick] (music.east) -- (nn.west);
+\draw[->, thick] (nn.east) -- (transcription.west);
+
+\end{tikzpicture}

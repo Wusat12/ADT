@@ -1,0 +1,25 @@
+\chapter{Conclusion}\label{Conclusion}
+
+This thesis set out to investigate how to achieve optimal generalization in \acrfull{ADT}, with a particular focus on \acrfull{DTM}, both within-domain and in \acrfull{OOD} evaluation. To address this, I explored how different deep learning architectures, both established and novel, and varying dataset compositions affect model performance across a diverse set of datasets. The goal was to understand how specific design choices in architecture and data influence a model's ability to generalize to both familiar and unseen input.
+
+In the first study, I trained and compared five deep learning architectures: a \acrfull{RNN}, \acrfull{CNN}, \acrfull{CRNN}, Convolutional Transformer, and \acrfull{ViT}. Each was trained and evaluated on separate datasets to assess within-domain generalization. The \acrlong{CRNN} emerged as the most effective overall, achieving the highest micro F1-scores on three out of four datasets. However, the \acrlong{RNN} and \acrlong{ViT} each achieved top performance on the remaining dataset, suggesting that these architectures may scale well with larger or more diverse training data and warrant further investigation.
+
+In the second study, I explored how combining datasets with different characteristics influences a model's ability to generalize. The results showed that dataset combinations substantially improve both within-domain and \acrfull{OOD} performance. Comparison with related literature further demonstrated that, when paired with a suitable \gls{ADT} architecture, these dataset choices can produce models with performance that surpasses the current state of the art.
+
+That said, the results also emphasize the importance of careful dataset construction. While increasing the amount of data generally improves performance, the specific properties of that data matter. In particular, I highlighted the value of covering a wide domain and the benefits of crowdsourced datasets, which offer a heterogeneity that improves generalization. 
+
+Finally, the findings suggest a hierarchical relationship between different \gls{ADT} tasks. More complex tasks, such as \gls{DTM}, appear to encompass simpler ones like \gls{DTD}, enabling models trained on the former to generalize well to the latter. However, the reverse does not hold, as models trained on simpler tasks struggle to generalize to more complex ones.
+
+Reflecting back on the questions raised in the introduction:
+\begin{enumerate}
+    \item \textbf{Which deep learning architecture is best suited for solving a task like \gls{ADT}?} 
+    \par The \acrlong{CRNN} consistently achieves strong performance across a variety of \gls{ADT} and \gls{DTM} datasets. It stands out as the best-performing architecture for learning the \gls{ADT} task and for generalizing within-domain.
+    \item \textbf{What makes an \gls{ADT} dataset optimal for training models to generalize on \gls{DTM}?} 
+    \par Training on large, \gls{DTM}-specific datasets that span a wide range of musical styles and characteristics, especially those derived from crowdsourced sources, is key to improving generalization. Additionally, aligning the complexity of the dataset with that of the task helps ensure that the models learn appropriate representations and generalize effectively to \acrfull{OOD} data.
+\end{enumerate}
+
+This thesis contributes not only by comparing different architectural choices for \gls{DTM} tasks, but also by evaluating how various \gls{ADT} datasets affect model generalization, both on existing public datasets and on a novel dataset I composed and transcribed specifically for this thesis, SADTP~\cite{fosse_sadtp_2025}. These contributions offer valuable insight into \gls{ADT}, emphasizing the importance of both architecture selection and thoughtful dataset construction.
+
+Future work should expand on this research by conducting more rigorous architectural analyses on larger datasets. In particular, further investigation is needed into how \acrfullpl{RNN} and \acrfullpl{ViT} scale with increased training data, and how pretraining a \acrshort{ViT} affects its final performance. This should also be extended to include evaluating the models' ability to generalize in \gls{OOD} settings.
+
+Lastly, this thesis demonstrates that deep learning models can achieve strong generalization performance on \gls{ADT} and \gls{DTM} tasks through deliberate choices in both architecture and dataset, and provides a clear direction for future research in the field of \acrlong{ADT}.

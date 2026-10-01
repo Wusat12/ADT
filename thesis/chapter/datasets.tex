@@ -1,0 +1,175 @@
+\chapter{Datasets}\label{Datasets}
+
+\section{ENST+MDB}
+
+The ENST-Drums dataset by Gillet and Richard~\cite{gillet2006enst} is one of the most commonly used \gls{ADT} datasets~\cite{8350302}. It features thoroughly annotated, real drum recordings performed by three drummers across various musical genres. Most tracks are drum-only, except for the \textit{minus-one} subset, which includes accompaniment. Since this thesis focuses on \gls{DTM}, I limit my use to this subset.
+
+The dataset provides separate audio files for the drum performance and the accompaniment. I additively combine these to form a single mixture track. Although each performance includes multiple microphone recordings from different spatial positions, I exclusively use the \textit{"wet mix"}, which combines the individual channels into a polished recording that closely resembles a professionally mixed track.
+
+ENST-Drums contains 1.02 hours of music across 64 tracks and was accessed via Zenodo~\cite{gillet_2006_7432188}.
+
+The MDB Drums dataset by Southall et al.~\cite{southall2017mdb} is another well-known dataset used for \gls{ADT}. It is built on Bittner et al.'s MedleyDB (MDB) dataset~\cite{bittner2014medleydb}, but has been re-annotated and specifically adapted for \gls{ADT}-related transcription tasks. Like ENST-Drums, it is split into different stem tracks, including isolated drum recordings and accompaniment. However, it also provides pre-mixed \textit{full mix} tracks, which I use in this thesis.
+
+MDB Drums include transcriptions at two levels of granularity: a \textit{class} file with 6 broad drum classes, and a \textit{subclass} file with 21 more specific drum instruments. While the 6-class transcriptions may seem more aligned with a 5-instrument setup, as used in this thesis, I found that the 21-class transcriptions offered more precise control over mapping specific instruments into the 5-instrument vocabulary. Therefore, I use the 21-instrument subclass transcriptions as annotations.
+
+MDB Drums contains 0.35 hours of music across 23 tracks and was accessed via GitHub~\cite{southall_mdbdrums_2017}.
+
+Both datasets distribute their audio as waveform files and their annotations as plain text files, formatted by onset time and instrument label. They are also relatively small in size and contain real, thoroughly annotated data. Due to these similarities, I combine them into a single, slightly larger dataset referred to as ENST+MDB.
+
+In total, ENST+MDB contains 1.37 hours of music across 87 tracks, split into 896, 236, and 152 respective training, validation and test sequences.
+
+\subsection{Splits}
+
+Neither dataset comes with predefined train/validation/test splits, so I construct my own. From ENST-Drums, I use recordings from \textit{drummer1} and \textit{drummer2} for training. The remaining drummer, \textit{drummer3}, is split evenly between validation and test sets. Since MDB Drums does not include explicit drummers, I instead split the data by musical genre. Full details of the splits are provided in Appendix~\ref{appendix-a}, described in Tables~\ref{ENSTSplits} and~\ref{MDBSplits}.
+
+\subsection{Mapping}
+
+The ENST-Drums and MDB Drums datasets contain transcriptions of 20 and 21 distinct drum instruments, respectively. This does not align with the 5-instrument vocabulary used in this thesis. To utilize all the available annotations, I apply a mapping from each original annotated instrument to one of the five target classes. Table~\ref{ENSTMDBMapping} shows the mapping used for the combined ENST+MDB dataset.
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{c|ll}
+        Vocabulary mapping & ENST-Drums & MDB Drums \\
+        \hline
+        \acrfull{KD} & \textit{bd} & \textit{KD} \\
+        \acrfull{SD} & \textit{sd}, \textit{sweep}, \textit{rs}, \textit{sticks}, \textit{cs} & \textit{SD}, \textit{SDB}, \textit{SDD}, \textit{SDF}, \textit{SDG}, \textit{SDNS}, \textit{SST} \\
+        \acrfull{TT} & \textit{mt}, \textit{mtr}, \textit{lmt}, \textit{lt}, \textit{ltr}, \textit{lft} & \textit{HIT}, \textit{MHT}, \textit{HFT}, \textit{LFT} \\
+        \acrfull{HH} & \textit{chh}, \textit{ohh} & \textit{CHH}, \textit{OHH}, \textit{PHH}, \textit{TMB} \\
+        \acrfull{CC+RC} & \textit{cr}, \textit{spl}, \textit{ch}, \textit{rc}, \textit{c}, \textit{cb} & \textit{RDC}, \textit{RDB}, \textit{CRC}, \textit{CHC}, \textit{SPC} \\
+    \end{tabular}
+    \caption{Mapping from the original instrument annotations in ENST-Drums and MDB Drums to the 5-instrument vocabulary used in this thesis. Description of the original instruments are available in their respective source papers~\cite{gillet2006enst, southall2017mdb}.}
+    \label{ENSTMDBMapping}
+\end{table}
+
+It should be noted that ENST-Drums includes more specific instrument annotations, where some instrument labels end with a number (e.g., \textit{"rc3"}) to indicate that multiple instances of the same instrument were present in the drum set, with the number specifying which was played. Additionally, certain snare drum events end with a hyphenated suffix (e.g., \textit{"sd-"}), indicating that the onset corresponds to a softer \textit{ghost note} hit~\cite{gillet2006enst}. Following general \gls{ADT} practice and for consistency with other datasets, I ignore these suffixes and treat such events as standard onsets for their respective instruments.
+
+\section{E-GMD}
+
+The Expanded Groove MIDI Dataset (E-GMD) by Callender et al.~\cite{callender2020improvingperceptualqualitydrum} is a large \gls{ADT} dataset consisting of audio recordings from human drum performances, annotated in MIDI format. It expands upon the original Gillick et al.'s Groove MIDI Dataset (GMD)~\cite{pmlr-v97-gillick19a}, which included only MIDI recordings without audio.
+
+The original dataset was created by recording human performances on a Roland TD-11 electronic drum kit in MIDI format. As it does not contain audio recordings, only MIDI files, it is not directly applicable for \gls{ADT} tasks. To enable its use for \gls{ADT}, Callender et al.~\cite{callender2020improvingperceptualqualitydrum} re-recorded the MIDI sequences in real-time using a Roland TD-17 electronic drum kit within a \gls{DAW}. These re-recordings were rendered using a wide range of soundfonts (often referred to as \textit{drum kits} in the context of electronic drum kits), producing multiple distinctly sounding audio renderings from each original MIDI performance pattern~\cite{pmlr-v97-gillick19a, callender2020improvingperceptualqualitydrum}.
+
+Unlike the other datasets used in this thesis, E-GMD was not created for a \gls{DTM} task, but rather for \gls{DTD}, as all recordings consist of solo, drum-only performances. Additionally, since the data was recorded from human performances in a semi-manual nature, some errors were introduced during recording, resulting in what the authors describe as \textit{"unusable tracks"}~\cite{callender2020improvingperceptualqualitydrum}. While the magnitude of these errors is not explicitly quantified, later analysis suggests that up to 20.5\% of tracks may contain discrepancies of varying severity~\cite{holz2021automatic}.
+
+This dataset contains 444.5 hours of audio across 1,059 unique drum performances, resampled into 45,537 MIDI sequences. It is provided with predefined training, validation, and test splits. I accessed the dataset via Zenodo~\cite{callender_2020_4300943, callender2020improvingperceptualqualitydrum}.
+
+\subsection{Mapping}
+
+E-GMD is annotated using a Roland electronic drum kit and stored as MIDI files. Each instrument is encoded as a specific MIDI pitch, following the mapping defined by the Roland TD-17 MIDI specifications~\cite{pmlr-v97-gillick19a, callender2020improvingperceptualqualitydrum, roland_drum_midi_td_17}.
+
+In general, MIDI percussion follows the widely adopted \textit{General MIDI} specifications, which defines a standardized pitch-to-instrument mapping. These mappings are extensively documented, for example in Rothstein's "MIDI: A comprehensive introduction"~\cite{rothstein1995midi}.
+
+To ensure correct identification of all instruments in the MIDI transcription, I construct a combined MIDI mapping that uses the Roland TD-17 specification (as referenced for E-GMD) as a base, supplemented with select entries from the General MIDI percussion standard. If the same pitch corresponds to different instruments across these two specifications, I prioritize the Roland mapping. While this approach might introduce redundancies, it ensures that all annotations are accurately parsed~\cite{pmlr-v97-gillick19a, callender2020improvingperceptualqualitydrum}.
+
+This combined MIDI mapping (seen in Table~\ref{RolandMIDIMapping}) is extensive and includes a wide range of percussive instruments. However, instruments that do not commonly appear in drum set transcriptions or that cannot be logically mapped to the 5-instrument vocabulary are excluded.
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{c|ll}
+        Vocabulary mapping & MIDI Pitch \\
+        \hline
+        \acrfull{KD} & \textit{35}, \textit{36} \\
+        \acrfull{SD} & \textit{37}, \textit{38}, \textit{39}, \textit{40} \\
+        \acrfull{TT} & \textit{41}, \textit{43}, \textit{45}, \textit{47}, \textit{48}, \textit{50}, \textit{58} \\
+        \acrfull{HH} & \textit{22}, \textit{26}, \textit{42}, \textit{44}, \textit{46}, \textit{54} \\
+        \acrfull{CC+RC} & \textit{49}, \textit{51}, \textit{52}, \textit{53}, \textit{55}, \textit{56}, \textit{57}, \textit{59} \\
+    \end{tabular}
+    \caption{Mapping from Roland TD-17 and General MIDI percussion pitches to the 5-instrument vocabulary used in this thesis. MIDI pitches that do not have an intuitive mapping to any of the five classes are omitted.}
+    \label{RolandMIDIMapping}
+\end{table}
+
+\section{Slakh}
+
+The Slakh (Synthesized Lakh 2100) dataset by Manilow et al.~\cite{8937170} is a synthesized subset of the Lakh Dataset by Raffel~\cite{raffel2016learning}. It consists of 2,100 randomly selected tracks from Lakh in which the MIDI files includes at least a piano, bass, guitar, and drums. These MIDI files are rendered and mixed into full audio tracks, which are stored alongside their corresponding original MIDI performances.
+
+Given that the dataset contains full musical mixtures, each with multiple instruments, it was originally designed for \gls{AMT} tasks. However, since each track includes a drum performance, converting it for \gls{ADT} is trivial. Therefore, I only utilize the MIDI tracks corresponding to the drum set as our labels for transcription.
+
+The original Slakh dataset was shown to contain data leakage between its different splits. For transcription tasks, it is therefore recommended to use a smaller subset, Slakh2100-redux, in which this issue has been solved. Thus, this is the specific subset I use in this thesis~\cite{manilow_2019_4599666}.
+
+This dataset contains 115 hours of audio recordings across 1710 different tracks. It is provided with predefined training, validation, and test splits. I accessed it via Zenodo~\cite{manilow_2019_4599666}.
+
+\subsection{Mapping}
+
+The Slakh dataset stores its annotations in MIDI files, similar to E-GMD. However, unlike E-GMD, it strictly uses the General MIDI percussion mapping. This mapping is nearly identical to the prior combined MIDI mapping, except it excludes MIDI pitches \textit{22}, \textit{26}, and \textit{58}, as shown in Table \ref{MIDIMapping}.
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{c|ll}
+        Vocabulary mapping & MIDI Pitch \\
+        \hline
+        \acrfull{KD} & \textit{35}, \textit{36} \\
+        \acrfull{SD} & \textit{37}, \textit{38}, \textit{39}, \textit{40} \\
+        \acrfull{TT} & \textit{41}, \textit{43}, \textit{45}, \textit{47}, \textit{48}, \textit{50} \\
+        \acrfull{HH} & \textit{42}, \textit{44}, \textit{46}, \textit{54} \\
+        \acrfull{CC+RC} & \textit{49}, \textit{51}, \textit{52}, \textit{53}, \textit{55}, \textit{56}, \textit{57}, \textit{59} \\
+    \end{tabular}
+    \caption{Mapping from General MIDI percussion pitches to the 5-instrument vocabulary used in this thesis. MIDI pitches that do not have an intuitive mapping to any of the five classes are omitted.}
+    \label{MIDIMapping}
+\end{table}
+
+\section{ADTOF-YT}
+
+The ADTOF-YT (Automatic Drums Transcription On Fire YouTube) dataset by Zehren et al.~\cite{signals4040042} is a large \gls{ADT} dataset constructed from crowdsourced data, as reflected by the YouTube suffix. Its crowdsourced nature enables the collection of large amounts of non-synthetic, human-performed audio data, but at the cost of reduced control over data quality. Zehren et al. also note that ADTOF-YT appears to be biased toward metal and rock genres~\cite{signals4040042}.
+
+Unlike the other datasets, ADTOF-YT is distributed as prepackaged TensorFlow datasets for each split. Each data point consists of a pair: a logarithmically filtered log-magnitude spectrogram and a sequence of instrument onset probabilities (activation functions). The dataset uses a 5-instrument vocabulary and is therefore the least diverse dataset in terms of instruments among those used in this thesis.
+
+In their original paper, "High-Quality and Reproducible Automatic Drum Transcription From Crowdsourced Data", Zehren et al.~\cite{signals4040042} state that the dataset's spectrograms are stored as log-magnitude, log-frequency spectrograms, computed with 12 filters per octave. However, in the dataset's distribution repository, it is instead claimed that \textit{"The data is available as mel-scale spectrograms."}~\cite{zehren_2023_10084511}. To resolve this discrepancy, I manually approximated and reconstructed the original audio waveforms from the provided spectrograms and compared them to other, known representations. Based on this analysis, I conclude that the dataset is indeed stored as logarithmically filtered log-magnitude spectrograms, not Mel spectrograms. This format matches that used by Vogl et al.~\cite{Vogl2017DrumTV}, and is consistent with the representation used throughout this thesis.
+
+The dataset contains 245 hours of music across 2924 tracks, provided through predefined training, validation, and test splits. The dataset was accessed via Zenodo~\cite{zehren_2023_10084511, signals4040042}.
+
+\subsection{Mapping}
+
+This dataset is already distributed using a 5-instrument vocabulary that matches the one used in this thesis. Therefore, no remapping of the annotations was necessary, and the dataset was used directly without modifications.
+
+\section{SADTP}
+
+To create a challenging and realistic \acrfull{OOD} test set, I curated and transcribed a new dataset specifically for this thesis. The SADTP (Small Automatic Drum Transcription Performance) dataset is a novel, small-scale dataset comprising 16 songs with corresponding MIDI transcriptions. 
+
+The name \textit{performance} alludes to the transcriptions being recorded live while listening to the audio playback, with only minor post-processing. The recordings were made on a Roland TD-11 electronic drum kit, with MIDI performance data captured in Apple's GarageBand \gls{DAW} and later extracted as separate MIDI files. This process is similar to that used in E-GMD, as the dataset was also recorded in a semi-manual manner. As a result, it may include slight, human-induced errors such as misaligned onsets or incorrect labels. While the exact magnitude of these errors is unknown, I consider them potentially significant and likely to manifest as a large \textit{transfer gap}.
+
+This dataset stands out as the only one in this thesis not used for training. Its sole purpose is cross-dataset evaluation, providing insight into the generalization ability of models trained on other sources.
+
+The dataset contains 1.08 hours of music across 16 tracks, segmented into 977 non-overlapping 4-second data points (with zero-padding applied when necessary for even partitioning). The dataset is available through GitHub~\cite{fosse_sadtp_2025}.
+
+\subsection{Mapping}
+
+Similar to E-GMD, the SADTP dataset stores its annotations as MIDI files recorded from a Roland TD-11 electronic drum kit (a close analogue to the Roland TD-17 used in E-GMD~\cite{callender2020improvingperceptualqualitydrum}). It therefore uses the same combined MIDI mapping shown in Table~\ref{RolandMIDIMapping}, making it directly compatible with the 5-instrument vocabulary used in this thesis.
+
+\section{Summary}
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{l|cccc}
+        Dataset & Duration (h) & Number of tracks & Melodic & Synthetic \\
+        \hline
+        ENST+MDB & 1.37 & 87 & $\checkmark$ & $\times$ \\
+        E-GMD & 444.5 & 45,537 & $\times$ & $\checkmark$ \\
+        Slakh & 115 & 1710 & $\checkmark$ & $\checkmark$ \\
+        ADTOF-YT & 245 & 2924 & $\checkmark$ & $\times$ \\
+        SADTP & 1.08 & 16 & $\checkmark$ & $\times$ \\
+    \end{tabular}
+    \caption{Overview of dataset characteristics, including total duration and number of tracks. Datasets marked as \textit{Melodic} contain full musical mixtures and are therefore used for \gls{DTM}; those without are drum-only and used for \gls{DTD}. \textit{Synthetic} indicates that the audio is digitally synthesized, often via automatic generation schemes~\cite{zehren2024analyzingreducingsynthetictorealtransfer}.}
+    \label{DatasetSummaryTable}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \hspace*{-0.6cm}
+    \begin{tabular}{l|ccc}
+        Dataset & Train & Validation & Test \\
+        \hline
+        ENST+MDB & 896 & 236 & 152 \\
+        E-GMD & 324,266 & 49,424 & 48,571 \\
+        Slakh & 80,662 & 16,643 & 9963 \\
+        ADTOF-YT & 134,332 & 28,984 & 18,650 \\
+        SADTP & $\times$ & $\times$ & 977 \\
+    \end{tabular}
+    \caption{Comparison of the number of sequences in each dataset's train, validation and test splits. All sequences are of length 400, corresponding to 4-second audio clips.}
+    \label{DatasetSplitSummaryTable}
+\end{table}
+
+Tables~\ref{DatasetSummaryTable} and~\ref{DatasetSplitSummaryTable} provide a structured overview of the datasets used in this thesis. Table~\ref{DatasetSummaryTable} summarizes key characteristics in a comparable format, while Table~\ref{DatasetSplitSummaryTable} highlights the substantial differences in dataset sizes. These datasets span a diverse range of properties, which may be beneficial for training \gls{ADT} models that generalize well across domains.

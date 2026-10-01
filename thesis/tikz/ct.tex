@@ -1,0 +1,260 @@
+\begin{tikzpicture}[
+    very thick,
+    arrow/.style={
+        -latex,
+        very thick,
+        rounded corners=0.2cm
+    },
+    do path picture/.style={%
+        path picture={%
+          \pgfpointdiff{\pgfpointanchor{path picture bounding box}{south west}}%
+            {\pgfpointanchor{path picture bounding box}{north east}}%
+          \pgfgetlastxy\x\y%
+          \tikzset{x=\x/2,y=\y/2}%
+          #1
+        }
+    },
+    sin wave/.style={do path picture={    
+        \draw [line cap=round] (-3/4,0)
+        sin (-3/8,1/2) cos (0,0) sin (3/8,-1/2) cos (3/4,0);
+        }
+    }
+    ]
+
+\node[anchor=south, label=above:{Input Spectrogram}] at (0, -0.5){\footnotesize{($T \times 84$)}};
+
+\draw[arrow] (0, -0.5) -- (0, -1.5) node [rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=magenta!20,
+minimum height=1cm,
+minimum width=4cm
+] (a) {Convolution (ReLU): $K_i$  $3 \times 3$};
+
+\draw (a) -- (0, -2.75) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (b) {Batch normalization};
+
+\draw (b) -- (0, -3.825) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (c) {Max pooling: $1 \times 3$};
+
+\draw (c) -- (0, -4.825) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (d) {Dropout: $p = 0.3$};
+
+\begin{scope}[on background layer]
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=ablabel]west:$2\times$},
+    draw,
+    very thick,
+    fit=(a) (b)] (ab) {};
+    \node[rectangle,
+    fill=gray!10,
+    rounded corners=5mm,
+    label=west:$2\times$,
+    draw,
+    very thick,
+    fit= (ab) (ablabel) (d)] {};
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=ablabel]west:$2\times$},
+    draw,
+    very thick,
+    fit=(a) (b)] (ab) {};
+\end{scope};
+
+\draw[arrow] (d) -- (0, -6.25) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=cyan!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (g) {Projection: $D_e$};
+
+\draw[arrow] (g) -- (0, -7.5) node[circle, 
+draw, 
+anchor=north,
+minimum size=1em, 
+inner sep=0pt
+] (h) {$\mathbf{+}$};
+
+\node [circle, 
+draw, 
+sin wave, 
+minimum size=2em, 
+right=1em of h,
+label={[align=left]east:Positional\\Encoding}
+] (pe) {};
+
+\draw (pe) -- (h);
+
+\draw[arrow] (h) -- (0, -8.75) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+minimum size=1em,
+inner sep=0pt,
+fill=red!20,
+minimum height=1cm,
+minimum width=4cm,
+label={west:$L\times$}
+] (v) {Transformer Block};
+
+\draw[arrow] (v) -- (0, -10.25) node[rectangle, 
+rounded corners, 
+draw, 
+anchor=north, 
+fill=blue!20,
+minimum height=1cm,
+minimum width=4cm
+] (w) {Linear (Sigmoid): $5$};
+
+\draw[arrow] (w) -- (0, -11.75);
+
+\node[anchor=north, label=below:{Output Probabilities}] at (0, -11.75){\footnotesize{($T \times 5$)}};
+
+
+% ---- Transformer Block ----
+\draw (7.5, -4.5) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+label=north:Transformer Block,
+minimum height=0.75cm,
+minimum width=4cm
+] (i) {Layer normalization};
+
+\draw[arrow] (i) -- (7.5, -6) node [rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=orange!20,
+minimum height=1cm,
+minimum width=4cm
+] (j) {Multi-Head Attention: $H$};
+
+\draw[arrow] (j.north)++(0, 0.4) -| ($(j.north) + (1.2,0)$);
+\draw[arrow] (j.north)++(0, 0.4) -| ($(j.north) + (-1.2,0)$);
+
+\draw (j) -- (7.5, -7.25) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (k) {Dropout: $p = 0.1$};
+
+\draw (k) -- (7.5, -8.125) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (l) {Add \& Norm};
+
+\coordinate (larrow) at ($(l.east) + (0.75, 0)$);
+\draw[arrow] (j.north)++(0, 0.525) -| (larrow) |- (l.east);
+
+\node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=cyan!20,
+minimum height=0.75cm,
+minimum width=4cm
+] at (7.5, -10) (m) {Linear (GELU): $4 \times D_e$};
+
+\coordinate (m1) at ($(m.north) + (0, 0.5)$);
+\draw[arrow] (l) -- ($(m1.north) + (0, 0.1)$);
+
+\draw (m) -- (7.5, -11) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=cyan!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (n) {Linear: $D_e$};
+
+\draw (n) -- (7.5, -12.25) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (o) {Dropout: $p = 0.1$};
+
+\draw (o) -- (7.5, -13.25) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (p) {Add};
+
+\draw[arrow] (m.north)++(0, 0.925) -| ($(p.east) + (0.75, 0)$) |- (p.east);
+
+\coordinate (i1) at ($(i.north) + (0, 0.5)$);
+
+\begin{scope}[on background layer]
+
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=mnlabel, yshift=-0.625cm]north:Feedforward},
+    draw,
+    very thick,
+    fit=(m) (m1) (n)] (mn) {};
+    \node[rectangle,
+    fill=gray!10,
+    rounded corners=5mm,
+    draw,
+    very thick,
+    fit= (i1) (mn) (p) (larrow)] (imnp) {};
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=mnlabel, yshift=-0.625cm]north:Feedforward},
+    draw,
+    very thick,
+    fit=(m) (m1) (n)] (mn) {};
+
+    \begin{scope}[even odd rule]
+        \path[clip] 
+        (current bounding box.south west) rectangle (current bounding box.north east)
+        ($(pe.north east) + (0, 0.25)$) rectangle ($(pe.south east) + (2.2, -0.25)$);
+        \draw[thick, color=black!50] (v.north east) -- (imnp.north west);
+        \draw[thick, color=black!50] (v.south east) -- (imnp.south west);
+      \end{scope}
+\end{scope};
+
+\draw[arrow] (7.5, -3.25) node[anchor=south] {\footnotesize{($T \times D_e$)}} -- (i |- imnp.north);
+\draw[arrow] (p |- imnp.south) -- (7.5, -14.75) node[anchor=north] {\footnotesize{($T \times D_e$)}};
+
+\end{tikzpicture}

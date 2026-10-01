@@ -1,0 +1,9 @@
+Best result config: {'num_epochs': 100, 'batch_size': 128, 'train_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/slakh2100_flac_redux/slakh_train.pt')], 'val_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/slakh2100_flac_redux/slakh_validation.pt')], 'transforms': {'mean': tensor([0.3865]), 'std': tensor([0.4332])}, 'lr': 0.002752402525696759, 'weight_decay': 0.0021811197799653536, 'optimizer': <class 'torch.optim.adamw.AdamW'>, 'Model': <class 'models.CNN'>, 'parameters': {'num_convs': 3, 'num_layers': 1, 'hidden_size': 288}, 'device': 'cuda:0', 'seed': 1748552726}
+Best result final validation loss: 0.2289137989282608
+Best result final validation micro F1: 0.8255585432052612
+Best result final validation macro F1: 0.71723473072052
+Best result final validation class F1: [0.9059633612632751, 0.8569970726966858, 0.44146662950515747, 0.8444789052009583, 0.5372679829597473]
+ ---------- Evaluation of best perfoming model ---------- 
+Micro F1: 0.8318
+Macro F1: 0.7367
+Class F1: ['0.9114', '0.8785', '0.5008', '0.8417', '0.5511']

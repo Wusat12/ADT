@@ -1,0 +1,95 @@
+\begin{tikzpicture}[
+    very thick,
+    arrow/.style={
+        -latex,
+        very thick,
+        rounded corners=0.2cm
+    },
+    ]
+
+\node[anchor=south, label=above:{Input Spectrogram}] at (0, -0.5){\footnotesize{($T \times 84$)}};
+
+\draw[arrow] (0, -0.5) -- (0, -1.5) node [rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=magenta!20,
+minimum height=1cm,
+minimum width=4cm
+] (a) {Convolution (ReLU): $K_i$  $3 \times 3$};
+
+\draw (a) -- (0, -2.75) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (b) {Batch normalization};
+
+\draw (b) -- (0, -3.825) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (c) {Max pooling: $1 \times 3$};
+
+\draw (c) -- (0, -4.825) node[rectangle,
+rounded corners,
+draw,
+anchor=north,
+fill=yellow!20,
+minimum height=0.75cm,
+minimum width=4cm
+] (d) {Dropout: $p = 0.3$};
+
+\begin{scope}[on background layer]
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=ablabel]west:$2\times$},
+    draw,
+    very thick,
+    fit=(a) (b)] (ab) {};
+    \node[rectangle,
+    fill=gray!10,
+    rounded corners=5mm,
+    label=west:$2\times$,
+    draw,
+    very thick,
+    fit= (ab) (ablabel) (d)] {};
+    \node[rectangle,
+    fill=gray!20,
+    rounded corners=3mm,
+    label={[name=ablabel]west:$2\times$},
+    draw,
+    very thick,
+    fit=(a) (b)] (ab) {};
+\end{scope}
+
+\draw[arrow] (d) -- (0, -6.25) node[rectangle, 
+rounded corners, 
+draw, 
+anchor=north, 
+label=west:$L\times$,
+fill=green!20,
+minimum height=1cm,
+minimum width=4cm
+] (g) {\acrshort{BiRU}: $H$};
+
+\draw[arrow] (g) -- (0, -7.75) node[rectangle, 
+rounded corners, 
+draw, 
+anchor=north, 
+fill=blue!20,
+minimum height=1cm,
+minimum width=4cm
+] (h) {Linear (Sigmoid): $5$};
+
+\draw[arrow] (h) -- (0, -9.75);
+
+\node[anchor=north, label=below:{Output Probabilities}] at (0, -9.75){\footnotesize{($T \times 5$)}};
+
+\end{tikzpicture}

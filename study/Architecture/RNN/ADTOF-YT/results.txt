@@ -1,0 +1,9 @@
+Best result config: {'num_epochs': 100, 'batch_size': 128, 'train_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/adtof/adtof_yt_train.pt')], 'val_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/adtof/adtof_yt_validation.pt')], 'transforms': {'mean': tensor([0.7242]), 'std': tensor([0.5012])}, 'lr': 0.00036152288784589806, 'weight_decay': 8.172662767961291e-05, 'optimizer': <class 'torch.optim.adamw.AdamW'>, 'Model': <class 'models.RNN'>, 'parameters': {'num_layers': 6, 'hidden_size': 576, 'use_gru': True}, 'device': 'cuda:0', 'seed': 1746823616}
+Best result final validation loss: 0.37192379614330073
+Best result final validation micro F1: 0.9022130966186523
+Best result final validation macro F1: 0.8709956407546997
+Best result final validation class F1: [0.9794563055038452, 0.9324350357055664, 0.8591206073760986, 0.7656860947608948, 0.8182798624038696]
+ ---------- Evaluation of best perfoming model ---------- 
+Micro F1: 0.9635
+Macro F1: 0.9566
+Class F1: ['0.9844', '0.9619', '0.9452', '0.9394', '0.9521']

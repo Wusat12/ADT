@@ -1,0 +1,28 @@
+\pagenumbering{roman}
+
+\begin{abstract}
+
+\noindent \acrfull{ADT}, particularly in the form of \acrfull{DTM}, remains a challenging task within the field of \acrfull{MIR} due to the complexity of recognizing and isolating drum events from polyphonic mixtures. Deep learning is the current approach for tackling this problem, but the roles of architectural design and dataset composition in supporting generalization remain underexplored.
+
+This thesis investigates how different neural network architectures and dataset configurations affect \acrshort{ADT} performance, both within-domain and under \acrfull{OOD} conditions. Two studies are presented. The first evaluates five architectures: \acrlong{RNN}, \acrlong{CNN}, \acrlong{CRNN}, Convolutional Transformer, and \acrlong{ViT}, across four public \acrshort{ADT} datasets. Results show that the \acrfull{CRNN} achieves the strongest overall performance, though the \acrlong{RNN} and \acrlong{ViT} also perform competitively on larger datasets, warranting further investigation.
+
+The second study examines how combining datasets with varying properties influences generalization. Models trained on diverse, especially crowdsourced, datasets exhibit stronger performance both within-domain and \acrshort{OOD}. A novel evaluation dataset, SADTP, is introduced to support realistic zero-shot testing.
+
+Together, these findings provide valuable insight for building generalizable \acrshort{ADT} models. They highlight the importance of selecting robust architectures and constructing heterogeneous, task-aligned datasets to support strong transcription performance across real-world audio conditions.
+
+\end{abstract}
+
+\renewcommand{\abstractname}{Acknowledgements}
+\begin{abstract}
+	I would like to express my deepest gratitude to my supervisor Pekka Parviainen, for allowing me to pursue this topic for my master's thesis, and for his continuous support and guidance throughout the year.
+
+	I would also like to thank the University of Bergen, particularly the Department of Informatics, for providing computational resources such as \textit{Birget}, which played a critical role in the execution of all experiments in this thesis.
+	
+	Lastly, I would like to thank everyone who showed interest and enthusiasm for my thesis topic. Your encouragement has been deeply appreciated and has helped carry me through these final stages of my studies.
+	
+	\vspace{1cm}
+	\hspace*{\fill}\texttt{Runar Fosse}\\ 
+	\hspace*{\fill}\today
+\end{abstract}
+\setcounter{page}{1}
+\newpage

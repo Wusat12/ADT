@@ -1,0 +1,58 @@
+\begin{tikzpicture}
+    
+% True Transcription
+\node[
+    anchor=east,
+    label=north:{\large{True Transcription}}
+] (true) at (0, -0.5cm) {\includegraphics[scale=1.2]{lilypond/example_label.cropped.pdf}};
+
+% Predicted Transcription
+\node[
+    anchor=west,
+    label=north:{\large{Predicted Transcription}}
+] (pred) at (0, -0.5cm) {\includegraphics[scale=1.2]{lilypond/example_prediction.cropped.pdf}};
+
+
+% False Positives
+\node[
+    anchor=north,
+    label={[label distance=0.49cm]north:{\normalsize{\acrfullpl{FP}}}},
+] (fp) at (0, -3cm) {\includegraphics[scale=1.2]{lilypond/example_fp.cropped.pdf}};
+
+% True Positives
+\node[
+    anchor=north,
+    label=north:{\normalsize{\acrfullpl{TP}}},
+    left=0.25cm of fp
+] {\includegraphics[scale=1.2]{lilypond/example_tp.cropped.pdf}};
+    
+% False Negatives
+\node[
+    anchor=north,
+    label={[label distance=0.49cm]north:{\normalsize{\acrfullpl{FN}}}},
+    right=0.25cm of fp
+] {\includegraphics[scale=1.2]{lilypond/example_fn.cropped.pdf}};
+
+\matrix[
+    column sep=0.55cm
+] at (0, -5cm) {
+    \node {\large{\textbf{Per-class F1}:}}; &
+    \node[
+        label=north:{\large{\acrshort{KD}}}
+    ] {\large{0.5}}; &
+    \node[
+        label=north:{\large{\acrshort{SD}}}
+    ] {\large{1.0}}; &
+    \node[
+        label=north:{\large{\acrshort{HH}}}
+    ]{\large{0.86}}; \\
+};
+\matrix[
+    column sep=0.5cm
+] at (0, -6cm) {
+    \node {\large{\textbf{Macro F1}: 0.79}}; &
+    \node {\large{\textbf{Micro F1}: 0.82}}; \\
+};
+
+
+\end{tikzpicture}

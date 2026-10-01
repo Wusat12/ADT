@@ -1,0 +1,9 @@
+Best result config: {'num_epochs': 100, 'batch_size': 128, 'train_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/e-gmd-v1.0.0/egmd_train.pt'), PosixPath('/Home/siv32/rfo034/master-thesis/data/slakh2100_flac_redux/slakh_train.pt'), PosixPath('/Home/siv32/rfo034/master-thesis/data/adtof/adtof_yt_train.pt')], 'val_paths': [PosixPath('/Home/siv32/rfo034/master-thesis/data/e-gmd-v1.0.0/egmd_validation.pt'), PosixPath('/Home/siv32/rfo034/master-thesis/data/slakh2100_flac_redux/slakh_validation.pt'), PosixPath('/Home/siv32/rfo034/master-thesis/data/adtof/adtof_yt_validation.pt')], 'transforms': {'mean': tensor([0.2815]), 'std': tensor([0.4283])}, 'lr': 0.002677391492356433, 'weight_decay': 0.0004141508447493849, 'optimizer': <class 'torch.optim.adamw.AdamW'>, 'Model': <class 'models.ConvolutionalRNN'>, 'parameters': {'num_layers': 3, 'hidden_size': 288, 'use_gru': False}, 'device': 'cuda:0', 'seed': 1752924937}
+Best result final validation loss: 0.47202343430525523
+Best result final validation micro F1: 0.9156709313392639
+Best result final validation macro F1: 0.9086688756942749
+Best result final validation class F1: [0.9510083198547363, 0.9299768805503845, 0.910956084728241, 0.8930561542510986, 0.8583466410636902]
+ ---------- Evaluation of best perfoming model ---------- 
+Micro F1: 0.9070
+Macro F1: 0.9105
+Class F1: ['0.9288', '0.9056', '0.9278', '0.8880', '0.9023']

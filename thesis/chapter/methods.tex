@@ -1,0 +1,122 @@
+\chapter{Methodology}\label{Methodology}
+
+In this thesis, I conduct two distinct studies. Although they differ in both intention and comparative evaluation methodology, the dataset preparation and model selection pipelines remain identical.
+
+It must be noted that all deep learning models and training procedures in this thesis are implemented using the \texttt{PyTorch} framework~\cite{paszke2019pytorch}. PyTorch provides the core tools for constructing the model architectures, managing data pipelines, and conducting training through automatic differentiation and backpropagation.
+
+The complete source code used for model implementation, dataset handling, training, and model selection pipeline, is publicly available in a GitHub repository~\cite{fosse2025}.
+
+\section{Data Preparation}
+
+As mentioned earlier, the datasets used in this thesis are distributed in varying formats. To enable consistent processing, a series of transformations are applied to unify them into PyTorch datasets.
+
+For the ADTOF-YT dataset, this unification is straightforward due to its already preprocessed nature: it only involves converting the stored TensorFlow dataset into a PyTorch format. Otherwise, the data is left unchanged.
+
+\subsection{Audio Files}
+
+The remaining datasets are distributed as either Waveform Audio File Format (\texttt{.wav}) or Free Lossless Audio Codec (\texttt{.flac}) files. Both formats are loaded using the PyTorch \texttt{Torchaudio} library and converted to monophonic format by averaging the left and right channels. If a dataset provides separate audio for drums and accompaniment (as in ENST-Drums), these are additively mixed.
+
+Once a track is loaded as a waveform, zero-padding is added to its end to ensure even partitioning into 4-second segments. Each segment is then transformed into a spectrogram using a \acrfull{STFT} with 2048 FFT bins, and a window length of 2048. The hop length is set to the sampling rate divided by 100, yielding a temporal resolution of 10~ms per frame. Since each segment contains 4 seconds of audio, the resulting spectrograms have a fixed sequence length of $T = 400$ frames.
+
+Next, a filterbank is applied by computing 12 area-normalized, logarithmically spaced filters per octave, centered at 440~Hz and spanning the range from 20~Hz to 20,000~Hz. Applying this filterbank via matrix multiplication results in a logarithmically filtered spectrogram with $D_\text{STFT} = 84$ frequency bins. Finally, a logarithmic scale is applied to the spectrogram's magnitude by computing $\log_{10}(x + 1)$ for each spectrogram value $x$. The addition of 1 ensures numerical stability near zero by preventing $\lim_{x \to 0}\log_{10}(x) = -\infty$.
+
+\subsection{Annotations}
+
+The annotations are distributed either as plain text files (\texttt{.txt}) or as MIDI files (\texttt{.mid} or \texttt{.midi}), each requiring a different transformation scheme to convert them into sequences of instrument onset probabilities (activation functions). Although additional metadata such as velocity may be present in specific datasets, I only use the onset time and corresponding drum instrument label.
+
+Datasets that store annotations in text format (ENST-Drums and MDB Drums) follow a similar structure: each onset is listed on a separate line, with the onset time (in seconds) and the instrument ID separated by a space or tab character. To convert these into onset probability sequences, the onset time is first converted to a frame index by converting from seconds to milliseconds, dividing by 10 to match the 10~ms frame resolution, and rounding to the nearest integer. The instrument ID is then mapped to its corresponding class, and the appropriate \texttt{(frame, class)} entry is set to 1.
+
+For datasets that provide MIDI annotations, I use the \texttt{Partitura} library to parse the MIDI files into arrays of MIDI events called \textit{notes}. Each note contains information such as onset time, pitch, and velocity. To extract drum onsets, I filter for notes with a non-zero velocity. Instrument labels are derived from the MIDI pitch, which is mapped to the corresponding class label. Frame indices are computed in the same manner as for the text-based annotations, and the corresponding \texttt{(frame, class)} entries are set to 1.
+
+In addition to these binary onset labels, I apply a \textit{target widening} strategy by assigning a soft label of 0.5 to frames adjacent to each onset. This technique has been shown to mitigate the effects of label sparsity, particularly in beat tracking and transcription tasks~\cite{9747048, signals4040042}.
+
+\subsection{Splitting and Storing}
+
+These spectrogram/onset sequence pairs are stored as \texttt{TensorDataset} objects in PyTorch, grouped according to each track's respective train, validation, or test split. These are then serialized into PyTorch pickle files (\texttt{.pt}). By performing all preprocessing steps in advance, the need for on-the-fly computation during training is minimized, improving runtime efficiency.
+
+\section{Preprocessing}
+
+Although most preprocessing is completed in advance, during the prior dataset preparation step, a few steps are deferred to runtime. Most importantly, each model computes the mean and standard deviation of its training dataset and uses these parameters to standardize input data during both training and inference. 
+
+This form of data normalization has been shown to improve the speed and stability of convergence during training, and often results in models that generalize better to unseen data. While the specific effects depend on the normalization technique used, there is a broad consensus in the machine learning community that normalization is beneficial, which explains its ubiquitous use in state-of-the-art models~\cite{10056354}.
+
+Another preprocessing step motivated by \gls{ADT}-specific methods is the use of infrequency weights, which assign frame-wise loss weights based on the instrument onsets present at each frame. These weights are precomputed from the training dataset and are calculated, for each instrument, using what Cartwright and Bello refer to as \textit{"the inverse estimated entropy of their event activity distribution"}~\cite{cartwright2018increasing}. While they applied this technique to address sparsity across different tasks, Zehren et al.~\cite{signals4040042} adapted it to emphasize infrequent instruments.
+
+To compute these weights, I first calculate the probability of an instrument $i$ appearing as $p_i = \frac{n_i}{T}$, where $n_i$ is the number of onsets and $T$ is the number of timesteps. The infrequency weight for instrument $i$, denoted $w_i$, is then computed as the inverse entropy: \[w_i = \left(-p_i\log p_i - (1 - p_i)\log{(1 - p_i)}\right)^{-1}.\] Note that this computation differs from the method by Cartwright and Bello, where the probability is averaged across instruments; here, I compute it per instrument independently~\cite{cartwright2018increasing}. 
+
+During training, the loss for each time frame is scaled by these precomputed weights. The specific loss weight for a given frame is calculated by summing the infrequency weights ($w_i$) of all instruments with an onset in that frame. For frames containing no onsets, the weight defaults to $1$. This approach follows the implementation by Zehren et al.~\cite{signals4040042}.
+
+It is worth noting that this entropy-based weighting function is symmetric around $p_i = 0.5$, meaning that weights would decrease again if an instrument appeared very frequently (i.e., in over 50\% of all time frames). However, this is not a concern in \gls{ADT}, as instrument onsets are inherently sparse, particularly at the fine-grained temporal resolution used in this thesis, ensuring that the computed weights emphasize the appropriate classes.
+
+\section{Training}
+
+With the datasets preprocessed and standardized into uniform PyTorch formats, training can proceed using the prepared spectrograms and corresponding onset annotations. This section describes how I implement the training procedure and outlines the loss function and training setup used to optimize model performance for the \gls{ADT} task.
+
+During training, the datasets are loaded and iterated using PyTorch's \texttt{DataLoader} objects, with a batch size of 128. At runtime, additional transformations are applied, such as model-specific input normalization and reshaping to match architectural requirements. All training is performed on an NVIDIA A100 80GB Tensor Core GPU to ensure efficient execution.
+
+As previously discussed, the \gls{ADT} task can be framed as a sequence labeling problem, where each time frame may contain multiple simultaneous instrument onsets. These are represented as binary targets: 1 if an instrument is active, and 0 otherwise. A natural loss function for this multi-label setup is binary cross-entropy, which treats each output dimension as an independent probability prediction. 
+
+Instead of applying a sigmoid activation function to the model's logits followed by binary cross-entropy, I directly output logits and use PyTorch's \texttt{BCEWithLogitsLoss} function, as recommended in the PyTorch documentation. This improves numerical stability by internally applying the log-sum-exp trick, which helps prevent underflow or overflow issues caused by extremely small or extremely large output values.
+
+For the choice of optimizer, I initially considered Adam, which is widely regarded as a strong general-purpose optimizer in deep learning. As Sebastian Ruder notes, \textit{"Adam might be the best overall choice"}~\cite{ruder2017overviewgradientdescentoptimization}. However, despite its popularity, Adam has known limitations, particularly in how it couples its weight decay term within its gradient-based updates~\cite{kingma2017adammethodstochasticoptimization, bock2018improvementconvergenceproofadamoptimizer}.
+
+To address this, I instead used AdamW~\cite{loshchilov2019decoupledweightdecayregularization}, a modified version of Adam that fully decouples weight decay from gradient updates. This decoupling has been shown to improve generalization performance, especially in regularized training scenarios.
+
+During training, I observed that the magnitude of the loss values could vary significantly and occasionally exhibited signs of instability, including exploding gradients. To mitigate this, I applied gradient clipping with a maximum norm of 2, which substantially reduced the risk of these exploding gradients.
+
+Another common addition in \gls{ADT} literature is the use of a learning rate scheduler. In this thesis, I adopt a scheduler that monitors recent validation loss values and reduces the learning rate by a factor of 5 if no improvement is observed for 5 consecutive epochs. Additionally, I implement early stopping by terminating training if the validation loss does not improve for 15 consecutive epochs~\cite{chang2024yourmt3+, signals4040042}.
+
+\section{Postprocessing}
+
+After training, the model produces frame-wise activation values rather than discrete predictions. These outputs form a two-dimensional matrix with values on the interval $(0, 1)$, representing the model's estimated confidence that a particular instrument is present at each time frame. While this continuous format is suitable for computing loss during training, it is less interpretable when evaluating performance or generating final transcriptions. To enable clear evaluation and comparison, additional postprocessing is applied to convert these confidence values into discrete onset predictions.
+
+First, I apply the earlier mentioned peak-picking algorithm to isolate local maxima in the model's onset confidence values. These peaks intuitively represent frames where the model is most confident that an instrument onset occurs, relative to its surrounding frames~\cite{Bck2012EvaluatingTO, vogl2018multiinstrumentdrumtranscription}. A predicted onset is then registered if a peak has a confidence value greater than or equal to 0.5.
+
+To compare predicted onsets with ground-truth annotations, I use a greedy, one-to-one matching procedure. Starting from the beginning of the sequence, a prediction is counted as a \acrfull{TP} if it occurs within a 5-frame (50~ms) window of a true onset. Each true onset can be matched to at most one prediction, and vice versa. Predictions outside this tolerance window are considered \acrfull{FP}, while true onsets without a corresponding prediction in the window are counted as \acrfull{FN}.
+
+These counts of \acrshort{TP}, \acrshort{FP}, and \acrshort{FN} are then used to compute the micro F1-score, as described earlier.
+
+\section{Model Selection}
+
+For model training and selection, I utilize the RayTune library~\cite{liaw2018tuneresearchplatformdistributed}, which provides an efficient and flexible framework for hyperparameter optimization and experiment management. It allows me to define a training function, specify the evaluation metric to optimize, configure hyperparameter search spaces and strategies, as well as manage runtime settings. Through per-epoch reporting, RayTune also handles checkpointing and automatically selects the best-performing model during and after training.
+
+For each experiment, I train 15 different models using RayTune, with the exception of the smallest dataset (ENST+MDB), where 25 models are evaluated due to having a lower computational complexity. Hyperparameters are optimized using Bayesian optimization (described in Section~\ref{HyperparameterTuning}). Each model is trained for up to 100 epochs, with early stopping applied if the validation loss plateaus. 
+
+During each training epoch, I evaluate the model on the corresponding validation set. After all 15 (or 25, in the case of ENST+MDB) models have completed training, I select the one with the highest validation Micro F1-score. 
+
+Because most datasets used are pre-split into training, validation, and test sets, I adopt a hold-out validation strategy. This approach is not only standard in \gls{ADT} research~\cite{vogl2016recurrent, 8350302, chang2024yourmt3+}, but also widely used throughout the deep learning community. As Raschka notes, \textit{"The holdout method is inarguably the simplest model evaluation technique"}~\cite{raschka2020modelevaluationmodelselection}, which may help explain its popularity.
+
+Once the best-performing model is selected based on validation performance, I evaluate it on the corresponding test dataset to estimate its generalization performance to unseen data. The final model is then stored along with its learned weights, training configuration, and evaluation metrics.
+
+As mentioned, each selected model is evaluated on the test splits of all datasets. Although test sets are traditionally reserved for a final performance evaluation, providing an estimate of how well a model generalizes to unseen data, they are also used here to compare the effects of different architectures or dataset configurations, depending on the study. This enables the analysis how various controllable factors influence a model's generalization ability. 
+
+Importantly, no model selection nor hyperparameter tuning is performed based on test performance, preserving the validity of test performances as an unbiased estimate of generalization.
+
+\section{Hyperparameter Tuning}\label{HyperparameterTuning}
+
+\subsection{Search Strategies}
+
+Each model includes several hyperparameters that must be tuned. A thorough, exhaustive approach is grid search, which trains and evaluates every possible combination of hyperparameter values to identify the best-performing configuration. However, the number of combinations grows exponentially with the number of hyperparameters and their value ranges, making grid search computationally infeasible for larger search spaces. 
+
+A more efficient alternative is random search, where hyperparameter combinations are sampled randomly from the search space. While this approach improves computational efficiency and has been shown to be surprisingly effective~\cite{bergstra2012random}, it introduces stochasticity: a given run may be unlucky, and fail to explore high-performing regions of the search space due to chance, resulting in a suboptimal model.
+
+A strategy that combines the advantages of both grid search and random search is Bayesian optimization. Like random search, it samples hyperparameter configurations from a defined space, but it also uses performance information from previously evaluated models to guide future sampling. This allows the search to progressively focus on more promising regions of the hyperparameter space. In doing so, it retains the computational efficiency of random search while gaining some of the systematic exploration found in grid search~\cite{snoek2012practical}.
+
+In this thesis, I utilize RayTune's implementation of \texttt{OptunaSearch}, which integrates the Optuna optimization framework~\cite{akiba2019optuna}. Optuna is based on Bayesian optimization and has been shown to be effective in neural network tuning tasks. For example, Shekhar et al.~\cite{shekhar2021comparative} benchmarked several hyperparameter optimization frameworks and noted that \textit{"The performance score of Optuna is the highest for all datasets."}
+
+\subsection{Hyperparameters}
+
+RayTune allows me to define the search space for each hyperparameter in a straightforward and flexible manner. All architecture-specific hyperparameters are sampled from discrete sets using random categorical choices. These sets are carefully constructed to ensure that each architecture operates within a comparable computational budget. This helps prevent any model from over- or underperforming due to discrepancies in parameter count or search space flexibility. Additionally, the optimizer-specific hyperparameters, learning rate and weight decay, are sampled using a logarithmically uniform distribution, enabling exploration across several orders of magnitude. The specific search spaces used in this thesis are listed in Table~\ref{MethodHyperparams}.
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{l|c}
+        Hyperparameter & Search Space       \\
+        \hline
+        Learning Rate      & Log-uniform over $[1 \cdot 10^{-4},\ 5 \cdot 10^{-3}]$ \\
+        Weight Decay     & Log-uniform over $[1 \cdot 10^{-6},\ 1 \cdot 10^{-2}]$ \\
+        Architecture-specific Hyperparameters      & Random choice from predefined values \\
+    \end{tabular}
+    \caption{Search space definitions for each hyperparameter. Learning rate and weight decay are sampled from log-uniform distributions, while architecture-specific hyperparameters are selected via random choice. The specific values for each architecture are detailed in Chapter~\ref{Architectures}.}
+    \label{MethodHyperparams}
+\end{table}
