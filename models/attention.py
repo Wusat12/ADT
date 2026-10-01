@@ -4,12 +4,14 @@ import torch.nn.functional as F
 
 from typing import Tuple
 
+from .constants import NUM_FEATURES, NUM_CLASSES
+
 class PatchEmbedding(nn.Module):
     def __init__(self, patch_size: Tuple[int, int] = (1, 21), embed_dim: int = 576):
         super().__init__()
-        num_patches = 84 // patch_size[1]
-        if 84 % patch_size[1] or embed_dim % num_patches:
-            raise ValueError(f"Patch_size {patch_size}, dimension 1 has to be factor of {84}, and their division result a factor of embed_dim {embed_dim}")
+        num_patches = NUM_FEATURES // patch_size[1]
+        if NUM_FEATURES % patch_size[1] or embed_dim % num_patches:
+            raise ValueError(f"Patch_size {patch_size}, dimension 1 has to be factor of {NUM_FEATURES}, and their division result a factor of embed_dim {embed_dim}")
 
         self.projection = nn.Conv2d(1, embed_dim // num_patches, kernel_size=patch_size, stride=patch_size)
         self.position_embedding = nn.Parameter(torch.randn(1, embed_dim // num_patches, 1, num_patches))
@@ -66,7 +68,7 @@ class AttentionDecoder(nn.Module):
         super().__init__()
         self.positional_encoding = PositionalEncoding(d_model=embed_dim)
         self.layers = nn.Sequential(*[AttentionLayer(num_heads=num_heads, embed_dim=embed_dim) for _ in range(num_layers)])
-        self.fc = nn.Linear(embed_dim, 5)
+        self.fc = nn.Linear(embed_dim, NUM_CLASSES)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.positional_encoding(x)

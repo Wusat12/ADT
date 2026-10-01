@@ -6,7 +6,7 @@ from ray import init, tune, train
 from ray.tune.search.optuna import OptunaSearch
 from time import time
 from models import RNN, CNN, ConvolutionalRNN, ConvolutionalTransformer, VisionTransformer
-from preprocess import compute_normalization, create_transform
+from preprocess import compute_normalization, create_transform, load_dataset
 from evaluate import evaluate_model
 from train import train_model
 from pathlib import Path
@@ -21,6 +21,7 @@ parser.add_argument("--model", choices=["rnn", "cnn", "crnn", "ct", "vit"], help
 parser.add_argument("--dataset", choices=["enst+mdb", "egmd", "slakh", "adtof_yt"], help="The dataset to train on", nargs="+", required=True)
 parser.add_argument("--num_samples", type=int, help="Number of samples for Optuna RayTune", required=False, default=15)
 parser.add_argument("--early_stop", type=int, help="Number of epochs with stagnating validation loss before early stopping", required=False, default=15)
+parser.add_argument("--representation", choices=["logmel", "pcen"], default="logmel", help="Frontend the datasets were converted with")
 args = parser.parse_args()
 
 # Extract the absolute path of the data directory
@@ -29,7 +30,7 @@ data_dir = root_dir / "data"
 
 # Initialize a Ray instance
 temp_dir = Path.home().resolve() / ".ray_temp"
-init(num_gpus=1, num_cpus=5, _temp_dir=temp_dir.as_posix())
+init(num_gpus=int(torch.cuda.is_available()), num_cpus=5, _temp_dir=temp_dir.as_posix())
 
 # ----------------------------------------------------------------------------------------------------------------
 
@@ -53,6 +54,7 @@ dataset_paths = [{
 }[dataset] for dataset in args.dataset]
 
 study = "Architecture" if len(args.dataset) == 1 else "Dataset"
+suffix = f"_{args.representation}"
 experiment = Model.name
 
 num_samples = args.num_samples
@@ -60,9 +62,9 @@ num_epochs = 100
 
 batch_size = 128
 
-train_paths = [dataset_path / (dataset + "_train.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
-val_paths = [dataset_path / (dataset + "_validation.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
-test_paths = [dataset_path / (dataset + "_test.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
+train_paths = [dataset_path / (dataset + suffix + "_train.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
+val_paths = [dataset_path / (dataset + suffix + "_validation.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
+test_paths = [dataset_path / (dataset + suffix + "_test.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
 
 feature_mean, feature_std = compute_normalization(train_paths, device=device)
 
@@ -89,13 +91,15 @@ config = {
 
     "device": device,
     "seed": seed,
+
+    "representation": args.representation,
 }
 
 # Run the experiments
 tuner = tune.Tuner(
     tune.with_resources(
         trainable=train_model,
-        resources={"gpu": 1, "accelerator_type:A100": 1}
+        resources={"gpu": int(torch.cuda.is_available())}
     ),
     param_space=config,
     tune_config=tune.TuneConfig(
@@ -128,7 +132,7 @@ best_checkpoint = best_result.get_best_checkpoint("Micro F1", mode="max")
 state_dict = torch.load(Path(best_checkpoint.path) / "model.pt")
 
 # Store the best performing model, config and its metrics to study/experiment path
-study_path = (root_dir / "study" / study / experiment / "+".join(args.dataset).upper().replace("_", "-"))
+study_path = (root_dir / "experiments" / args.representation / study / experiment / "+".join(args.dataset).upper().replace("_", "-"))
 study_path.mkdir(parents=True, exist_ok=True)
 torch.save(state_dict, study_path / "model.pt")
 torch.save(best_result.config, study_path / "config.pt")
@@ -139,7 +143,7 @@ model = Model(**best_result.config["parameters"])
 model.load_state_dict(state_dict)
 
 # Create a test dataloader and preprocessing transforms
-test_loader = DataLoader(ConcatDataset(map(torch.load, test_paths)), batch_size=batch_size, num_workers=4, pin_memory=True)
+test_loader = DataLoader(ConcatDataset(map(load_dataset, test_paths)), batch_size=batch_size, num_workers=4, pin_memory=True)
 transforms = create_transform(mean=feature_mean, std=feature_std, channels_last=True)
 
 # And evaluate it

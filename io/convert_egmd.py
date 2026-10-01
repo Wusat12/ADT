@@ -14,6 +14,7 @@ vocabulary = set()
 # Declare an argument parser for this file
 parser = argparse.ArgumentParser("convert_egmd.py")
 parser.add_argument("--directory", help="The outer directory for the E-GMD dataset", required=False, default="e-gmd-v1.0.0")
+parser.add_argument("--representation", choices=["logmel", "pcen"], default="logmel")
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -35,9 +36,9 @@ if __name__ == "__main__":
             audio_path = path / values["audio_filename"]
             midi_path = path / values["midi_filename"]
             
-            spectrogram = readAudio(audio_path)
+            spectrogram = readAudio(audio_path, representation=args.representation)
             timesteps = spectrogram.shape[0]
-            label = readMidi(midi_path, ROLAND_MIDI_MAPPING, timesteps, 5, vocabulary)
+            label = readMidi(midi_path, ROLAND_MIDI_MAPPING, timesteps, 3, vocabulary)
 
             partitions = timesteps // 400
             data += list(spectrogram.tensor_split(partitions, dim=0))
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         print("\033[96m", "     Creating tensor datasets", "\033[0m", sep="")
         dataset = TensorDataset(data, labels)
 
-        new_path = (path / f"egmd_{split}").with_suffix(".pt")
+        new_path = (path / f"egmd_{args.representation}_{split}").with_suffix(".pt")
         print("\033[96m", "     Storing ", "\033[0m", f"{new_path.name}", "\033[96m", " to disk", "\033[0m", sep="")
         torch.save(dataset, new_path)
 
@@ -62,7 +63,13 @@ if __name__ == "__main__":
         print("\033[92m", "     Each class has a frequency of: ", "\033[0m", dataset[:][1].round().sum(dim=(0, 1)), sep="")
 
     # Verify that dataloaders work
-    dataloader = DataLoader(torch.load(path / "egmd_train.pt"), batch_size=16)
+    dataloader = DataLoader(
+            torch.load(
+                path / f"egmd_{args.representation}_train.pt",
+                weights_only=False,
+            ),
+            batch_size=16,
+        )
     num_batches, mean, std = len(dataloader), torch.zeros(1), torch.zeros(1)
     for i, (features, labels) in enumerate(dataloader):
         if i == 0:

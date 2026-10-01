@@ -13,11 +13,13 @@ from .attention import AttentionDecoder, PatchEmbedding
 from typing import Tuple
 from warnings import warn
 
+from .constants import NUM_FEATURES, ENCODER_OUT, NUM_CLASSES
+
 
 class RNN(nn.Module):
     def __init__(self, num_layers: int = 3, hidden_size: int = 288, use_gru: bool = True):
         super().__init__()
-        self.recurrent = RNNDecoder(input_size=84, num_layers=num_layers, hidden_size=hidden_size, use_gru=use_gru)
+        self.recurrent = RNNDecoder(input_size=NUM_FEATURES, num_layers=num_layers, hidden_size=hidden_size, use_gru=use_gru)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         latent = torch.flatten(x.permute(0, 2, 1, 3), start_dim=2)
@@ -35,13 +37,13 @@ class CNN(nn.Module):
         super().__init__()
         self.encoder = FrameSynchronousCNNEncoder(num_convolutions=num_convs)
 
-        latent_size = 84 // (torch.pow(torch.tensor(3), num_convs)) * (32 * num_convs)
+        latent_size = (NUM_FEATURES // 3 ** num_convs) * (32 * num_convs)
         self.dense = nn.Sequential(
             nn.Linear(latent_size, hidden_size), 
             nn.ReLU(), 
             *[layer for _ in range(num_layers - 1) for layer in [nn.Linear(hidden_size, hidden_size), nn.ReLU()]]
         )
-        self.fc = nn.Linear(hidden_size, 5)
+        self.fc = nn.Linear(hidden_size, NUM_CLASSES)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(x)
@@ -59,7 +61,7 @@ class ConvolutionalRNN(nn.Module):
     def __init__(self, num_layers: int = 3, hidden_size: int = 288, use_gru: bool = True):
         super().__init__()
         self.encoder = FrameSynchronousCNNEncoder()
-        self.decoder = RNNDecoder(num_layers=num_layers, hidden_size=hidden_size, use_gru=use_gru)
+        self.decoder = RNNDecoder(input_size=ENCODER_OUT, num_layers=num_layers, hidden_size=hidden_size, use_gru=use_gru)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(x)
@@ -78,7 +80,7 @@ class ConvolutionalTransformer(nn.Module):
     def __init__(self, num_heads: int = 6, num_layers: int = 5, embed_dim: int = 576):
         super().__init__()
         self.encoder = FrameSynchronousCNNEncoder()
-        self.projection = nn.Linear(576, embed_dim)
+        self.projection = nn.Linear(ENCODER_OUT, embed_dim)
         self.decoder = AttentionDecoder(num_heads=num_heads, num_layers=num_layers, embed_dim=embed_dim)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:

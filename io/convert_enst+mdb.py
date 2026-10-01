@@ -431,7 +431,7 @@ if __name__ == "__main__":
         )
 
         # Load dataset and verify
-        dataset_check = torch.load(new_path)
+        dataset_check = torch.load(new_path, weights_only=False)
 
         print(
             "\033[92m",

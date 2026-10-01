@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from ray import train, tune
 from ray.train import Checkpoint
 
-from preprocess import compute_infrequency_weights, create_transform
+from preprocess import compute_infrequency_weights, create_transform, load_dataset
 from evaluate import compute_peaks, compute_predictions, f_measure
 
 from tempfile import TemporaryDirectory
@@ -27,8 +27,8 @@ def train_model(config: tune.TuneConfig):
     print(f"Training: Can use CUDA: {torch.cuda.is_available()}")
 
     # Load the datasets into dataloaders
-    train_loader = DataLoader(ConcatDataset(map(torch.load, config["train_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
-    val_loader = DataLoader(ConcatDataset(map(torch.load, config["val_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
+    train_loader = DataLoader(ConcatDataset(map(load_dataset, config["train_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
+    val_loader = DataLoader(ConcatDataset(map(load_dataset, config["val_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
 
     # Create a transform preprocessing pipeline
     transforms = create_transform(**config["transforms"], channels_last=True)

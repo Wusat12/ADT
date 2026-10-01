@@ -1,49 +1,57 @@
 import torch
 import torchaudio
 from torch.utils.data import DataLoader, ConcatDataset
+import torch.nn as nn
 from torchvision import transforms, ops
 from pathlib import Path
 from typing import Tuple, List
 import sys
 sys.path.append("io/")
-from load import compute_log_filterbank
 
 
-def compute_normalization(train_paths: List[Path], device: str = "cpu") -> Tuple[torch.Tensor]:
-    """ Compute the normalization terms, (mean, std), of the training dataset. """
-    # Insert the training dataset into a dataloader
-    train_dataset = ConcatDataset(map(torch.load, train_paths))
+def load_dataset(path: Path):
+    """ Load a stored TensorDataset. These are full pickles, so weights_only must be False on PyTorch >= 2.6. """
+    return torch.load(path, weights_only=False)
 
-    # Enter all datapoints into a stack
-    train_loader = DataLoader(train_dataset, shuffle=False, batch_size=128, num_workers=4, pin_memory=True)
-    N, (C, H, W) = len(train_dataset), train_dataset[0][0].shape 
-    stack = torch.empty((N, C, H, W), dtype=torch.float32, device=device)
 
-    # Fill it batch by batch
-    i = 0
-    for imgs, _ in train_loader:
-        b = imgs.size(0)
-        stack[i:i+b] = imgs.to(device)
-        i += b
+def compute_normalization(train_paths: List[Path], device: str = "cpu", per_feature: bool = True) -> Tuple[torch.Tensor]:
+    """ Compute the normalization terms, (mean, std), of the training dataset.
 
-    # And compute and return values
-    mean, std = stack.mean(dim=(0, 1, 2)).to("cpu"), stack.std(dim=(0, 1, 2)).to("cpu")
+    Entries have shape (time, features, 1). With per_feature=True one mean/std is computed for every
+    feature, otherwise a single scalar mean/std. Statistics are accumulated batch by batch, so the
+    dataset never has to fit in memory. (device is kept for compatibility and unused.) """
+    train_dataset = ConcatDataset(map(load_dataset, train_paths))
+    train_loader = DataLoader(train_dataset, shuffle=False, batch_size=128, num_workers=0)
 
-    # Delete the stack tensor and empty the cache
-    del stack
-    if device[:4] == "cuda" and torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    dims = (0, 1, 3) if per_feature else (0, 1, 2, 3)
+    total, total_sq, count = 0.0, 0.0, 0
+    for feats, _ in train_loader:
+        x = feats.to(torch.float64)
+        total = total + x.sum(dim=dims)
+        total_sq = total_sq + (x ** 2).sum(dim=dims)
+        count += x.numel() // (x.shape[2] if per_feature else 1)
 
-    return mean, std
+    mean = total / count
+    std = (total_sq / count - mean ** 2).clamp(min=0.0).sqrt().clamp(min=1e-8)
+    return mean.float(), std.float()
+
+
+class FeatureNormalize(nn.Module):
+    """ Normalize inputs of shape (batch, time, features, 1) with per-feature (or scalar) mean and std. """
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor):
+        super().__init__()
+        self.register_buffer("mean", torch.as_tensor(mean, dtype=torch.float32).reshape(1, 1, -1, 1))
+        self.register_buffer("std", torch.as_tensor(std, dtype=torch.float32).reshape(1, 1, -1, 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return (x - self.mean.to(x.device)) / self.std.to(x.device)
+
 
 def create_transform(mean: torch.Tensor, std: torch.Tensor, channels_last: bool) -> transforms.Compose:
     """ Create a preprocessing transforms pipeline. """
-    # Normalize the data
-    composition = [
-        transforms.Normalize(mean=mean, std=std),
-        ]
+    composition = [FeatureNormalize(mean=mean, std=std)]
 
-    # Permute the images if channels_last is set to True
+    # Permute (batch, time, features, 1) -> (batch, 1, time, features)
     if channels_last:
         composition.append(ops.Permute((0, 3, 1, 2)))
 
