@@ -42,6 +42,12 @@ parser.add_argument(
     default="logmel",
 )
 
+parser.add_argument(
+    "--enst_only",
+    action="store_true",
+    help="Process only ENST-Drums and skip MDB Drums",
+)
+
 args = parser.parse_args()
 
 
@@ -60,7 +66,7 @@ ENST_SPLITS = [
         "115_minus-one_bossa_brushes",
         "121_MIDI-minus-one_bigband_brushes",
         "123_MIDI-minus-one_blues-102_sticks",
-        "125_MIDI-minus-one_country-120_brushes",
+        "125_MIDI-minus-one_country-120_sticks",
         "127_MIDI-minus-one_disco-108_sticks",
         "129_MIDI-minus-one_funk-101_sticks",
         "131_MIDI-minus-one_grunge_sticks",
@@ -111,10 +117,10 @@ ENST_SPLITS = [
         "146_MIDI-minus-one_disco-108_sticks",
         "148_MIDI-minus-one_funk-101_sticks",
         "150_MIDI-minus-one_grunge_sticks",
-        "152_MIDI-minus-one_nu-soul_sticks",
-        "154_MIDI-minus-one_rock-113_sticks",
-        "156_MIDI-minus-one_rock'n'roll-188_sticks",
-        "158_MIDI-minus-one_soul-120-marvin-gaye_sticks",
+        "152_MIDI-minus-one_grunge_sticks",
+        "154_MIDI-minus-one_fusion-125_sticks",
+        "156_MIDI-minus-one_rock-113_sticks",
+        "158_MIDI-minus-one_rock'n'roll-188_sticks",
         "160_MIDI-minus-one_soul-98_sticks",
         "162_MIDI-minus-one_fusion-125_sticks",
     ],
@@ -154,6 +160,11 @@ MDB_SPLITS = [
 ]
 
 
+# Skip MDB Drums when testing with ENST only.
+if args.enst_only:
+    MDB_SPLITS = [[], [], []]
+
+
 # Set a seed for predictable splitting
 seed = 100
 
@@ -161,8 +172,11 @@ seed = 100
 if __name__ == "__main__":
 
     # Declare the path to the dataset directory
+    # Declare the path to the dataset directory
     path = Path(__file__).resolve().parent.parent / "data" / "ENST+MDB"
 
+    # Create the output directory if it does not exist.
+    path.mkdir(parents=True, exist_ok=True)
     print(
         "\033[96m",
         f"Using representation: {args.representation}",
@@ -177,6 +191,14 @@ if __name__ == "__main__":
         NUM_LABELS,
         sep="",
     )
+
+    if args.enst_only:
+        print(
+            "\033[96m",
+            "Dataset mode: ENST only",
+            "\033[0m",
+            sep="",
+        )
 
     print(
         "\033[96m",
@@ -222,6 +244,23 @@ if __name__ == "__main__":
                 / "annotation"
                 / piece
             ).with_suffix(".txt")
+
+            # Some entries in the historical ENST split definition
+            # are not present in the current ENST-Drums package.
+            # Do not substitute different recordings: skip them.
+            if not (
+                audio_path.is_file()
+                and accompaniment_path.is_file()
+                and annotation_path.is_file()
+            ):
+                print(
+                    "\033[93m",
+                    f"Skipping missing ENST recording: {piece} "
+                    f"(drummer_{drummer + 1})",
+                    "\033[0m",
+                    sep="",
+                )
+                continue
 
             spectrogram = readAudio(
                 audio_path,
@@ -483,7 +522,7 @@ if __name__ == "__main__":
                 "\033[0m",
                 features.shape,
                 "\033[92m",
-                ", and labels of shape: ",
+                ", and labels shape: ",
                 "\033[0m",
                 labels.shape,
                 sep="",
@@ -510,7 +549,7 @@ if __name__ == "__main__":
         mean,
         "\033[92m",
         ", and std of: ",
-        "\033[0m",
         std,
         sep="",
     )
+

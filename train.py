@@ -1,154 +1,755 @@
+import os
+import random
+from pathlib import Path
+
+import numpy as np
 import torch
-import torch.nn.functional as F
-from torch import nn, optim
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import train
 
-from preprocess import compute_infrequency_weights, create_transform, load_dataset
-from evaluate import compute_peaks, compute_predictions, f_measure
+from preprocess import (
+    compute_infrequency_weights,
+    create_transform,
+    load_dataset,
+)
 
-from tempfile import TemporaryDirectory
-from pathlib import Path
-from copy import deepcopy
+from evaluate import (
+    compute_peaks,
+    compute_predictions,
+    f_measure,
+)
 
 
-def train_model(config: tune.TuneConfig):
-    """ Training function to use with RayTune """
-    # Seed torch and cuda
-    seed = config["seed"]
-    if seed is not None:
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
+# ----------------------------------------------------------------------------------------------------------------
+# Reproducibility
+# ----------------------------------------------------------------------------------------------------------------
 
-    # Declare device
-    device = config["device"] if torch.cuda.is_available() else "cpu"
-    print(f"Training: Can use CUDA: {torch.cuda.is_available()}")
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-    # Load the datasets into dataloaders
-    train_loader = DataLoader(ConcatDataset(map(load_dataset, config["train_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
-    val_loader = DataLoader(ConcatDataset(map(load_dataset, config["val_paths"])), shuffle=True, batch_size=config["batch_size"], num_workers=4, pin_memory=True)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-    # Create a transform preprocessing pipeline
-    transforms = create_transform(**config["transforms"], channels_last=True)
 
-    # Create the model, loss function and optimizer
-    model = config["Model"](**config["parameters"]).to(device)
-    loss_fn = nn.BCEWithLogitsLoss(reduction="none")
-    optimizer = config["optimizer"](model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"])
-    optimizer.zero_grad(set_to_none=True)
-    print("Number of parameters: ", sum(param.numel() for param in model.parameters()))
+# ----------------------------------------------------------------------------------------------------------------
+# Feature layout
+# ----------------------------------------------------------------------------------------------------------------
 
-    # Add a learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.2, patience=5)
+def prepare_features_for_model(features):
+    """
+    Convert dataset features from:
 
-    # Compute infrequent instrument weights from the training dataset
-    infrequency_weights = compute_infrequency_weights(train_loader).to(device)
-    print("Infrequency weights: ", infrequency_weights)
-    
-    # Start training
-    print(f"Started training on {device}")
-    epochs_since_improvement, best_epoch, val_loss_best, val_f1_micro_best = 0, None, None, None
-    for epoch in range(config["num_epochs"]):
+        [B, T, F, C]
+
+    to CNN format:
+
+        [B, C, T, F]
+
+    The converted datasets contain features with shape:
+
+        [T, 168, 1]
+
+    Therefore the DataLoader produces:
+
+        [B, T, 168, 1]
+    """
+
+    if features.ndim != 4:
+        raise RuntimeError(
+            "Expected a 4D feature tensor, "
+            f"but received shape {tuple(features.shape)}."
+        )
+
+    # Dataset format:
+    # [B, T, F, C]
+    if features.shape[-1] == 1:
+
+        features = features.permute(
+            0,
+            3,
+            1,
+            2,
+        ).contiguous()
+
+    # Already in CNN format:
+    # [B, C, T, F]
+    elif features.shape[1] == 1:
+
+        features = features.contiguous()
+
+    else:
+
+        raise RuntimeError(
+            "Unable to determine feature layout. "
+            f"Received tensor shape {tuple(features.shape)}."
+        )
+
+    return features
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Ray training function
+# ----------------------------------------------------------------------------------------------------------------
+
+def train_model(config):
+
+    seed = config.get(
+        "seed",
+        42,
+    )
+
+    set_seed(seed)
+
+    device_name = config.get(
+        "device",
+        "cpu",
+    )
+
+    if (
+        torch.cuda.is_available()
+        and device_name != "cpu"
+    ):
+        device = torch.device(
+            device_name
+        )
+    else:
+        device = torch.device(
+            "cpu"
+        )
+
+    num_epochs = config["num_epochs"]
+    batch_size = config["batch_size"]
+
+    train_paths = config["train_paths"]
+    val_paths = config["val_paths"]
+
+    print(
+        "\nStarting training trial"
+    )
+
+    print(
+        f"Device: {device}"
+    )
+
+    print(
+        f"Batch size: {batch_size}"
+    )
+
+    print(
+        f"Epochs: {num_epochs}"
+    )
+
+    print(
+        f"Representation: "
+        f"{config.get('representation', 'unknown')}"
+    )
+
+    print(
+        f"Train paths: {train_paths}"
+    )
+
+    print(
+        f"Validation paths: {val_paths}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Load datasets
+    # ----------------------------------------------------------------------------------------------------------------
+
+    train_datasets = [
+        load_dataset(path)
+        for path in train_paths
+    ]
+
+    validation_datasets = [
+        load_dataset(path)
+        for path in val_paths
+    ]
+
+    train_dataset = ConcatDataset(
+        train_datasets
+    )
+
+    validation_dataset = ConcatDataset(
+        validation_datasets
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Normalization
+    # ----------------------------------------------------------------------------------------------------------------
+
+    transform_config = config.get(
+        "transforms",
+        {},
+    )
+
+    feature_mean = transform_config.get(
+        "mean"
+    )
+
+    feature_std = transform_config.get(
+        "std"
+    )
+
+    train_transform = create_transform(
+        mean=feature_mean,
+        std=feature_std,
+        channels_last=False,
+    )
+
+    validation_transform = create_transform(
+        mean=feature_mean,
+        std=feature_std,
+        channels_last=False,
+    )
+
+    for dataset in train_datasets:
+
+        dataset.transform = (
+            train_transform
+        )
+
+    for dataset in validation_datasets:
+
+        dataset.transform = (
+            validation_transform
+        )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # DataLoaders
+    # ----------------------------------------------------------------------------------------------------------------
+
+    num_workers = config.get(
+        "num_workers",
+        0,
+    )
+
+    use_pin_memory = (
+        torch.cuda.is_available()
+        and device.type == "cuda"
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=use_pin_memory,
+    )
+
+    validation_loader = DataLoader(
+        validation_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=use_pin_memory,
+    )
+
+    print(
+        f"Training examples: "
+        f"{len(train_dataset)}"
+    )
+
+    print(
+        f"Validation examples: "
+        f"{len(validation_dataset)}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Model
+    # ----------------------------------------------------------------------------------------------------------------
+
+    Model = config["Model"]
+
+    model_parameters = config.get(
+        "parameters",
+        {},
+    )
+
+    model = Model(
+        **model_parameters
+    )
+
+    model = model.to(
+        device
+    )
+
+    print(
+        f"Model: {Model.__name__}"
+    )
+
+    print(
+        f"Model parameters: "
+        f"{sum(p.numel() for p in model.parameters()):,}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Loss
+    # ----------------------------------------------------------------------------------------------------------------
+
+    infrequency_weights = (
+        compute_infrequency_weights(
+            train_dataset
+        )
+    )
+
+    infrequency_weights = (
+        infrequency_weights.to(
+            device
+        )
+    )
+
+    criterion = nn.BCEWithLogitsLoss(
+        reduction="none",
+        pos_weight=infrequency_weights,
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Optimizer
+    # ----------------------------------------------------------------------------------------------------------------
+
+    Optimizer = config.get(
+        "optimizer",
+        optim.AdamW,
+    )
+
+    optimizer = Optimizer(
+        model.parameters(),
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Learning-rate scheduler
+    # ----------------------------------------------------------------------------------------------------------------
+
+    scheduler = (
+        optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="max",
+            factor=0.5,
+            patience=2,
+        )
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Training state
+    # ----------------------------------------------------------------------------------------------------------------
+
+    best_micro_f1 = None
+
+    best_macro_f1 = None
+
+    best_class_f1 = None
+
+    best_training_loss = None
+
+    best_validation_loss = None
+
+    epochs_since_improvement = 0
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Epoch loop
+    # ----------------------------------------------------------------------------------------------------------------
+
+    for epoch in range(
+        num_epochs
+    ):
+
+        print(
+            f"\nEpoch {epoch + 1}/{num_epochs}"
+        )
+
+        # ============================================================================================================
+        # Training
+        # ============================================================================================================
+
         model.train()
-        train_loss, n_batches_train = 0.0, 0
-        for i, data in enumerate(train_loader):
-            # Perform forward, backward and optimization step
-            inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = model(transforms(inputs))
 
-            # Compute per timestep weights given labels and infrequency weights
-            timestep_weights = (labels * infrequency_weights).sum(dim=2)
-            timestep_weights = torch.max(torch.tensor(1.0), timestep_weights)
+        total_training_loss = 0.0
 
-            loss = (loss_fn(outputs, labels).sum(dim=2) * timestep_weights).mean()
+        total_training_batches = 0
+
+        for features, labels in train_loader:
+
+            features = features.to(
+                device,
+                non_blocking=True,
+            )
+
+            labels = labels.to(
+                device,
+                non_blocking=True,
+            )
+
+            # Convert:
+            #
+            # [B, T, F, C]
+            #
+            # into:
+            #
+            # [B, C, T, F]
+            #
+            # required by Conv2d.
+
+            features = (
+                prepare_features_for_model(
+                    features
+                )
+            )
+
+            optimizer.zero_grad(
+                set_to_none=True
+            )
+
+            activations = model(
+                features
+            )
+
+            loss = criterion(
+                activations,
+                labels,
+            )
+
+            loss = loss.mean()
+
             loss.backward()
 
-            # Clip the gradients to prevent explosions
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, error_if_nonfinite=True)
-
             optimizer.step()
-            optimizer.zero_grad()
 
-            # And store training loss
-            train_loss += loss.item()
-            n_batches_train += 1
-
-
-        # After a training epoch, compute validation performance
-        model.eval()
-        val_loss, n_batches_val = 0.0, 0
-        val_predictions = torch.zeros(size=(infrequency_weights.shape[0], 3))
-        with torch.no_grad():
-            for i, data in enumerate(val_loader):
-                inputs, labels = data[0].to(device), data[1].to(device)
-                outputs = model(transforms(inputs))
-
-                loss = loss_fn(outputs, labels).sum(dim=2).mean()
-                val_loss += loss.item()
-                n_batches_val += 1
-
-                # Compute activation probabilties and add to predictions
-                activations = F.sigmoid(outputs)
-                val_predictions += compute_predictions(compute_peaks(activations), labels)
-
-                if i == 0:
-                    print(torch.stack((F.sigmoid(outputs), labels), dim=-1))
-                    
-        # Average the losses
-        train_loss /= n_batches_train
-        val_loss /= n_batches_val
-
-        # Step the scheduler
-        scheduler.step(val_loss)
-        print("Learning rate:", scheduler.get_last_lr())
-
-        # Compute F1 score
-        val_f1_micro, val_f1_macro, val_f1_class = f_measure(val_predictions)
-        print("Predictions:", val_predictions)
-        print("Class F1s:", val_f1_class)
-
-        # Check if we should increment early stop count
-        if val_loss_best is None or val_loss < val_loss_best:
-            val_loss_best = val_loss
-            epochs_since_improvement = 0
-        else:
-            epochs_since_improvement += 1
-            
-        # Check if we should checkpoint current model by comparing micro F1 score
-        with TemporaryDirectory() as temp_checkpoint_dir:
-            checkpoint = None
-            checkpoint_path = Path(temp_checkpoint_dir)
-            if val_f1_micro_best is None or val_f1_micro > val_f1_micro_best:
-                val_f1_micro_best = val_f1_micro
-
-                # Save model to the temporary checkpoint directory
-                model_path = checkpoint_path / "model.pt"
-                torch.save(model.state_dict(), model_path)
-                
-                # Create a Checkpoint object
-                checkpoint = Checkpoint.from_directory(checkpoint_path)
-
-                # Store best epoch information
-                best_epoch = {
-                    "Training Loss": train_loss,
-                    "Validation Loss": val_loss,
-                    "Micro F1": val_f1_micro.item(),
-                    "Macro F1": val_f1_macro.item(),
-                    "Class F1": val_f1_class.tolist(),
-                }
-
-            # Report to RayTune
-            train.report({
-                "Training Loss": train_loss,
-                "Validation Loss": val_loss,
-                "Micro F1": val_f1_micro.item(),
-                "Macro F1": val_f1_macro.item(),
-                "Class F1": val_f1_class.tolist(),
-                "best_epoch": best_epoch,
-                "epochs_since_improvement": epochs_since_improvement
-                },
-                checkpoint=checkpoint
+            total_training_loss += (
+                loss.detach().item()
             )
-    print("Finished training")
+
+            total_training_batches += 1
+
+        training_loss = (
+            total_training_loss
+            / max(
+                total_training_batches,
+                1,
+            )
+        )
+
+        # ============================================================================================================
+        # Validation
+        # ============================================================================================================
+
+        model.eval()
+
+        total_validation_loss = 0.0
+
+        total_validation_batches = 0
+
+        all_activations = []
+
+        all_labels = []
+
+        with torch.no_grad():
+
+            for features, labels in validation_loader:
+
+                features = features.to(
+                    device,
+                    non_blocking=True,
+                )
+
+                labels = labels.to(
+                    device,
+                    non_blocking=True,
+                )
+
+                # Convert:
+                #
+                # [B, T, F, C]
+                #
+                # into:
+                #
+                # [B, C, T, F]
+
+                features = (
+                    prepare_features_for_model(
+                        features
+                    )
+                )
+
+                activations = model(
+                    features
+                )
+
+                loss = criterion(
+                    activations,
+                    labels,
+                )
+
+                loss = loss.mean()
+
+                total_validation_loss += (
+                    loss.detach().item()
+                )
+
+                total_validation_batches += 1
+
+                all_activations.append(
+                    activations.detach().cpu()
+                )
+
+                all_labels.append(
+                    labels.detach().cpu()
+                )
+
+        validation_loss = (
+            total_validation_loss
+            / max(
+                total_validation_batches,
+                1,
+            )
+        )
+
+        all_activations = torch.cat(
+            all_activations,
+            dim=0,
+        )
+
+        all_labels = torch.cat(
+            all_labels,
+            dim=0,
+        )
+
+        # ============================================================================================================
+        # Event-based evaluation
+        # ============================================================================================================
+
+        peaks = compute_peaks(
+            all_activations,
+            m=2,
+            o=2,
+            w=2,
+            delta=0.1,
+        )
+
+        predictions = compute_predictions(
+            peaks,
+            all_labels,
+            w=5,
+        )
+
+        val_f1_micro, val_f1_macro, val_f1_class = (
+            f_measure(
+                predictions
+            )
+        )
+
+        val_f1_micro_value = float(
+            val_f1_micro
+        )
+
+        val_f1_macro_value = float(
+            val_f1_macro
+        )
+
+        if torch.is_tensor(
+            val_f1_class
+        ):
+
+            val_f1_class_value = [
+                float(value)
+                for value in val_f1_class
+            ]
+
+        else:
+
+            val_f1_class_value = [
+                float(value)
+                for value in val_f1_class
+            ]
+
+        # ============================================================================================================
+        # Print epoch results
+        # ============================================================================================================
+
+        print(
+            f"Training Loss: "
+            f"{training_loss:.6f}"
+        )
+
+        print(
+            f"Validation Loss: "
+            f"{validation_loss:.6f}"
+        )
+
+        print(
+            f"Validation Micro F1: "
+            f"{val_f1_micro_value:.6f}"
+        )
+
+        print(
+            f"Validation Macro F1: "
+            f"{val_f1_macro_value:.6f}"
+        )
+
+        print(
+            f"Validation Class F1: "
+            f"{val_f1_class_value}"
+        )
+
+        # ============================================================================================================
+        # Learning-rate scheduler
+        # ============================================================================================================
+
+        scheduler.step(
+            val_f1_micro_value
+        )
+
+        # ============================================================================================================
+        # Best model
+        # ============================================================================================================
+
+        is_best = (
+            best_micro_f1 is None
+            or val_f1_micro_value > best_micro_f1
+        )
+
+        if is_best:
+
+            best_micro_f1 = (
+                val_f1_micro_value
+            )
+
+            best_macro_f1 = (
+                val_f1_macro_value
+            )
+
+            best_class_f1 = (
+                val_f1_class_value
+            )
+
+            best_training_loss = (
+                training_loss
+            )
+
+            best_validation_loss = (
+                validation_loss
+            )
+
+            epochs_since_improvement = 0
+
+            checkpoint_path = (
+                Path("E:/temp")
+                / (
+                    f"adt_checkpoint_"
+                    f"{os.getpid()}_"
+                    f"{epoch + 1}"
+                )
+            )
+
+            checkpoint_path.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            torch.save(
+                model.state_dict(),
+                checkpoint_path / "model.pt",
+            )
+
+            checkpoint = (
+                train.Checkpoint.from_directory(
+                    checkpoint_path.as_posix()
+                )
+            )
+
+        else:
+
+            epochs_since_improvement += 1
+
+            checkpoint = None
+
+        # ============================================================================================================
+        # Report metrics to Ray
+        # ============================================================================================================
+
+        report_metrics = {
+
+            "Training Loss":
+                training_loss,
+
+            "Validation Loss":
+                validation_loss,
+
+            "Micro F1":
+                val_f1_micro_value,
+
+            "Macro F1":
+                val_f1_macro_value,
+
+            "Class F1":
+                val_f1_class_value,
+
+            "best_epoch/Training Loss":
+                best_training_loss,
+
+            "best_epoch/Validation Loss":
+                best_validation_loss,
+
+            "best_epoch/Micro F1":
+                best_micro_f1,
+
+            "best_epoch/Macro F1":
+                best_macro_f1,
+
+            "best_epoch/Class F1":
+                best_class_f1,
+
+            "epochs_since_improvement":
+                epochs_since_improvement,
+
+            "epoch":
+                epoch + 1,
+        }
+
+        train.report(
+            report_metrics,
+            checkpoint=checkpoint,
+        )
+
+        # ============================================================================================================
+        # Early stopping
+        # ============================================================================================================
+
+        early_stop = config.get(
+            "early_stop",
+            float("inf"),
+        )
+
+        if (
+            epochs_since_improvement
+            >= early_stop
+        ):
+
+            print(
+                "\nEarly stopping triggered."
+            )
+
+            print(
+                f"No improvement for "
+                f"{epochs_since_improvement} "
+                f"epoch(s)."
+            )
+
+            break
+
+    print(
+        "\nTraining trial finished."
+    )
+
+    print(
+        f"Best validation Micro F1: "
+        f"{best_micro_f1}"
+    )
+
