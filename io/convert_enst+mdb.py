@@ -1,24 +1,61 @@
+import argparse
+import random
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-from pathlib import Path
-import argparse
 
 from load import readAudio, readAnnotations
 from mapping import ENST_MAPPING, MDB_MAPPING
 
 
-"""Run this file to turn ENST-Drums + MDB Drums into stored PyTorch datasets."""
+"""
+Run this file to turn ENST-Drums + MDB Drums + IDMT-SMT-Drums
+into stored PyTorch datasets.
+
+All three datasets use the same thesis frontend:
+
+    Audio
+      -> 84-band Mel
+      -> Log-Mel or PCEN-Mel
+      -> positive first-order temporal difference
+      -> 168 features
+      -> 400-frame chunks
+      -> 3 drum classes
+
+Classes:
+    0 = bass drum
+    1 = snare drum
+    2 = hi-hat
+"""
 
 
-# Number of thesis drum classes:
-# 0 = bass drum
-# 1 = snare drum
-# 2 = hi-hat
+# ============================================================
+# Constants
+# ============================================================
+
 NUM_LABELS = 3
+CHUNK_FRAMES = 400
+
+# IDMT annotations contain onset times in seconds.
+# The repository frontend uses 10 ms annotation frames.
+SECONDS_PER_FRAME = 0.010
+
+IDMT_MAPPING = {
+    "KD": 0,
+    "SD": 1,
+    "HH": 2,
+}
 
 
-# Declare an argument parser for this file
-parser = argparse.ArgumentParser("convert_enst+mdb.py")
+# ============================================================
+# Argument parser
+# ============================================================
+
+parser = argparse.ArgumentParser(
+    "convert_enst+mdb.py"
+)
 
 parser.add_argument(
     "--directory_enst",
@@ -31,7 +68,14 @@ parser.add_argument(
     "--directory_mdb",
     help="The outer directory for the MDB Drums dataset",
     required=False,
-    default="MDBDrums-master/MDB Drums",
+    default="MDB Drums",
+)
+
+parser.add_argument(
+    "--directory_idmt",
+    help="The outer directory for the IDMT-SMT-Drums dataset",
+    required=False,
+    default="IDMT SMT",
 )
 
 parser.add_argument(
@@ -42,8 +86,24 @@ parser.add_argument(
     default="logmel",
 )
 
+parser.add_argument(
+    "--enst_only",
+    action="store_true",
+    help="Process only ENST-Drums and skip MDB and IDMT",
+)
+
+parser.add_argument(
+    "--enst_mdb_only",
+    action="store_true",
+    help="Process ENST-Drums and MDB Drums, but skip IDMT",
+)
+
 args = parser.parse_args()
 
+
+# ============================================================
+# ENST splits
+# ============================================================
 
 # Splits from ADTOF-github
 # Originally from Vogl et al.
@@ -60,7 +120,7 @@ ENST_SPLITS = [
         "115_minus-one_bossa_brushes",
         "121_MIDI-minus-one_bigband_brushes",
         "123_MIDI-minus-one_blues-102_sticks",
-        "125_MIDI-minus-one_country-120_brushes",
+        "125_MIDI-minus-one_country-120_sticks",
         "127_MIDI-minus-one_disco-108_sticks",
         "129_MIDI-minus-one_funk-101_sticks",
         "131_MIDI-minus-one_grunge_sticks",
@@ -111,15 +171,19 @@ ENST_SPLITS = [
         "146_MIDI-minus-one_disco-108_sticks",
         "148_MIDI-minus-one_funk-101_sticks",
         "150_MIDI-minus-one_grunge_sticks",
-        "152_MIDI-minus-one_nu-soul_sticks",
-        "154_MIDI-minus-one_rock-113_sticks",
-        "156_MIDI-minus-one_rock'n'roll-188_sticks",
-        "158_MIDI-minus-one_soul-120-marvin-gaye_sticks",
+        "152_MIDI-minus-one_grunge_sticks",
+        "154_MIDI-minus-one_fusion-125_sticks",
+        "156_MIDI-minus-one_rock-113_sticks",
+        "158_MIDI-minus-one_rock'n'roll-188_sticks",
         "160_MIDI-minus-one_soul-98_sticks",
         "162_MIDI-minus-one_fusion-125_sticks",
     ],
 ]
 
+
+# ============================================================
+# MDB splits
+# ============================================================
 
 MDB_SPLITS = [
     [
@@ -154,18 +218,298 @@ MDB_SPLITS = [
 ]
 
 
-# Set a seed for predictable splitting
-seed = 100
+# ============================================================
+# IDMT split creation
+# ============================================================
 
+def create_idmt_splits(directory_idmt):
+    """
+    Create deterministic recording-level IDMT train/validation/test
+    splits.
+
+    The split is performed before feature extraction so that chunks
+    belonging to the same recording can never occur in different
+    subsets.
+
+    Current local IDMT package contains 95 MIX recordings.
+
+    Split:
+        70% train
+        15% validation
+        15% test
+
+    A fixed seed makes the split reproducible.
+    """
+
+    audio_directory = (
+        directory_idmt / "audio"
+    )
+
+    recordings = sorted(
+        audio_directory.glob("*#MIX.wav")
+    )
+
+    if not recordings:
+        return [[], [], []]
+
+    rng = random.Random(100)
+
+    recordings = list(recordings)
+    rng.shuffle(recordings)
+
+    num_recordings = len(recordings)
+
+    num_train = int(
+        round(num_recordings * 0.70)
+    )
+
+    num_validation = int(
+        round(num_recordings * 0.15)
+    )
+
+    train = recordings[:num_train]
+
+    validation_start = num_train
+    validation_end = (
+        validation_start + num_validation
+    )
+
+    validation = recordings[
+        validation_start:validation_end
+    ]
+
+    test = recordings[
+        validation_end:
+    ]
+
+    return [
+        train,
+        validation,
+        test,
+    ]
+
+
+# ============================================================
+# IDMT XML annotation parser
+# ============================================================
+
+def read_idmt_annotations(
+    path,
+    num_frames,
+):
+    """
+    Read an IDMT XML annotation file.
+
+    IDMT XML annotations contain events such as:
+
+        <event>
+            <onsetSec>0.08585</onsetSec>
+            <instrument>HH</instrument>
+        </event>
+
+    Only KD, SD and HH are retained.
+
+    Returns:
+        Tensor with shape [num_frames, 3].
+    """
+
+    labels = torch.zeros(
+        (num_frames, NUM_LABELS),
+        dtype=torch.float32,
+    )
+
+    tree = ET.parse(path)
+    root = tree.getroot()
+
+    for event in root.findall(".//event"):
+
+        onset_element = event.find(
+            "onsetSec"
+        )
+
+        instrument_element = event.find(
+            "instrument"
+        )
+
+        if (
+            onset_element is None
+            or instrument_element is None
+        ):
+            continue
+
+        if (
+            onset_element.text is None
+            or instrument_element.text is None
+        ):
+            continue
+
+        instrument = (
+            instrument_element.text.strip()
+        )
+
+        # Ignore TT, CY, OT and any other
+        # instruments not part of the thesis.
+        if instrument not in IDMT_MAPPING:
+            continue
+
+        try:
+            onset_seconds = float(
+                onset_element.text
+            )
+        except ValueError:
+            continue
+
+        frame = int(
+            round(
+                onset_seconds
+                / SECONDS_PER_FRAME
+            )
+        )
+
+        if (
+            frame < 0
+            or frame >= num_frames
+        ):
+            continue
+
+        label = IDMT_MAPPING[
+            instrument
+        ]
+
+        labels[frame, label] = 1.0
+
+    return labels
+
+
+# ============================================================
+# Split IDMT recording into 400-frame chunks
+# ============================================================
+
+def split_recording(
+    spectrogram,
+    label,
+):
+    """
+    Split one recording into 400-frame chunks.
+
+    readAudio() pads the feature representation so that the temporal
+    dimension is divisible into 400-frame segments.
+    """
+
+    timesteps = spectrogram.shape[0]
+
+    if label.shape[0] != timesteps:
+        raise RuntimeError(
+            "Feature and annotation lengths do not match: "
+            f"{timesteps} != {label.shape[0]}"
+        )
+
+    if timesteps % CHUNK_FRAMES != 0:
+        raise RuntimeError(
+            "Feature sequence is not divisible by 400 frames: "
+            f"{timesteps}"
+        )
+
+    partitions = timesteps // CHUNK_FRAMES
+
+    return (
+        list(
+            spectrogram.tensor_split(
+                partitions,
+                dim=0,
+            )
+        ),
+        list(
+            label.tensor_split(
+                partitions,
+                dim=0,
+            )
+        ),
+    )
+
+
+# ============================================================
+# Main conversion
+# ============================================================
 
 if __name__ == "__main__":
 
-    # Declare the path to the dataset directory
-    path = Path(__file__).resolve().parent.parent / "data" / "ENST+MDB"
+    # --------------------------------------------------------
+    # Declare dataset paths
+    # --------------------------------------------------------
+
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+    )
+
+    output_path = path / "ENST+MDB"
+
+    output_path.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    enst_path = (
+        path / args.directory_enst
+    )
+
+    mdb_path = (
+        path / args.directory_mdb
+    )
+
+    idmt_path = (
+        path / args.directory_idmt
+    )
+
+    # --------------------------------------------------------
+    # Dataset mode
+    # --------------------------------------------------------
+
+    if args.enst_only:
+
+        MDB_SPLITS = [
+            [],
+            [],
+            [],
+        ]
+
+        IDMT_SPLITS = [
+            [],
+            [],
+            [],
+        ]
+
+        dataset_mode = "ENST only"
+
+    elif args.enst_mdb_only:
+
+        IDMT_SPLITS = [
+            [],
+            [],
+            [],
+        ]
+
+        dataset_mode = "ENST + MDB"
+
+    else:
+
+        IDMT_SPLITS = create_idmt_splits(
+            idmt_path
+        )
+
+        dataset_mode = (
+            "ENST + MDB + IDMT"
+        )
+
+    # --------------------------------------------------------
+    # Print configuration
+    # --------------------------------------------------------
 
     print(
         "\033[96m",
-        f"Using representation: {args.representation}",
+        f"Using representation: "
+        f"{args.representation}",
         "\033[0m",
         sep="",
     )
@@ -180,26 +524,50 @@ if __name__ == "__main__":
 
     print(
         "\033[96m",
+        f"Dataset mode: {dataset_mode}",
+        "\033[0m",
+        sep="",
+    )
+
+    if IDMT_SPLITS[0]:
+        print(
+            "\033[96m",
+            "IDMT recording split: ",
+            "\033[0m",
+            f"train={len(IDMT_SPLITS[0])}, "
+            f"validation={len(IDMT_SPLITS[1])}, "
+            f"test={len(IDMT_SPLITS[2])}",
+            sep="",
+        )
+
+    print(
+        "\033[96m",
         "Loading data into lists",
         "\033[0m",
         sep="",
     )
 
-    train_data, train_labels = [], []
-    validation_data, validation_labels = [], []
-    test_data, test_labels = [], []
+    train_data = []
+    train_labels = []
 
-    # ============================================================
+    validation_data = []
+    validation_labels = []
+
+    test_data = []
+    test_labels = []
+
+    # ========================================================
     # ENST
-    # ============================================================
+    # ========================================================
 
     for drummer in range(3):
 
-        for i, piece in enumerate(ENST_SPLITS[drummer]):
+        for i, piece in enumerate(
+            ENST_SPLITS[drummer]
+        ):
 
             audio_path = (
-                path
-                / args.directory_enst
+                enst_path
                 / f"drummer_{drummer + 1}"
                 / "audio"
                 / "wet_mix"
@@ -207,8 +575,7 @@ if __name__ == "__main__":
             ).with_suffix(".wav")
 
             accompaniment_path = (
-                path
-                / args.directory_enst
+                enst_path
                 / f"drummer_{drummer + 1}"
                 / "audio"
                 / "accompaniment"
@@ -216,12 +583,30 @@ if __name__ == "__main__":
             ).with_suffix(".wav")
 
             annotation_path = (
-                path
-                / args.directory_enst
+                enst_path
                 / f"drummer_{drummer + 1}"
                 / "annotation"
                 / piece
             ).with_suffix(".txt")
+
+            # Some historical ENST split entries are
+            # not present in the current package.
+            if not (
+                audio_path.is_file()
+                and accompaniment_path.is_file()
+                and annotation_path.is_file()
+            ):
+
+                print(
+                    "\033[93m",
+                    "Skipping missing ENST recording: "
+                    f"{piece} "
+                    f"(drummer_{drummer + 1})",
+                    "\033[0m",
+                    sep="",
+                )
+
+                continue
 
             spectrogram = readAudio(
                 audio_path,
@@ -229,7 +614,9 @@ if __name__ == "__main__":
                 representation=args.representation,
             )
 
-            timesteps = spectrogram.shape[0]
+            timesteps = (
+                spectrogram.shape[0]
+            )
 
             label = readAnnotations(
                 annotation_path,
@@ -238,66 +625,101 @@ if __name__ == "__main__":
                 NUM_LABELS,
             )
 
-            partitions = timesteps // 400
+            data_chunks, label_chunks = (
+                split_recording(
+                    spectrogram,
+                    label,
+                )
+            )
 
             if drummer < 2:
 
-                train_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
-                )
+                train_data += data_chunks
+                train_labels += label_chunks
 
-                train_labels += list(
-                    label.tensor_split(partitions, dim=0)
-                )
+            elif (
+                i
+                < len(
+                    ENST_SPLITS[drummer]
+                ) // 2
+            ):
 
-            elif i < len(ENST_SPLITS[drummer]) // 2:
-
-                validation_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
-                )
-
-                validation_labels += list(
-                    label.tensor_split(partitions, dim=0)
-                )
+                validation_data += data_chunks
+                validation_labels += label_chunks
 
             else:
 
-                test_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
-                )
+                test_data += data_chunks
+                test_labels += label_chunks
 
-                test_labels += list(
-                    label.tensor_split(partitions, dim=0)
-                )
-
-    # ============================================================
+    # ========================================================
     # MDB
-    # ============================================================
+    # ========================================================
 
-        for i, piece in enumerate(MDB_SPLITS[drummer]):
+    for drummer in range(3):
 
+        for i, piece in enumerate(
+            MDB_SPLITS[drummer]
+        ):
+
+            # Use the full musical mix rather than
+            # the isolated drum-only recording.
             audio_path = (
-                path
-                / args.directory_mdb
+                mdb_path
                 / "audio"
                 / "full_mix"
                 / f"{piece}_MIX"
             ).with_suffix(".wav")
 
+            # MDB class annotations contain:
+            #
+            # KD = kick
+            # SD = snare
+            # HH = hi-hat
+            # TT = toms
+            # CY = cymbals
+            # OT = other
+            #
+            # Only KD/SD/HH are retained.
             annotation_path = (
-                path
-                / args.directory_mdb
+                mdb_path
                 / "annotations"
-                / "subclass"
-                / f"{piece}_subclass"
+                / "class"
+                / f"{piece}_class"
             ).with_suffix(".txt")
+
+            if not audio_path.is_file():
+
+                print(
+                    "\033[93m",
+                    f"Skipping missing MDB audio: "
+                    f"{piece}",
+                    "\033[0m",
+                    sep="",
+                )
+
+                continue
+
+            if not annotation_path.is_file():
+
+                print(
+                    "\033[93m",
+                    f"Skipping missing MDB annotation: "
+                    f"{piece}",
+                    "\033[0m",
+                    sep="",
+                )
+
+                continue
 
             spectrogram = readAudio(
                 audio_path,
                 representation=args.representation,
             )
 
-            timesteps = spectrogram.shape[0]
+            timesteps = (
+                spectrogram.shape[0]
+            )
 
             label = readAnnotations(
                 annotation_path,
@@ -306,55 +728,178 @@ if __name__ == "__main__":
                 NUM_LABELS,
             )
 
-            partitions = timesteps // 400
+            data_chunks, label_chunks = (
+                split_recording(
+                    spectrogram,
+                    label,
+                )
+            )
 
             if drummer < 2:
 
-                train_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
-                )
+                train_data += data_chunks
+                train_labels += label_chunks
 
-                train_labels += list(
-                    label.tensor_split(partitions, dim=0)
-                )
+            elif (
+                i
+                < len(
+                    MDB_SPLITS[drummer]
+                ) // 2
+            ):
 
-            elif i < len(MDB_SPLITS[drummer]) // 2:
-
-                validation_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
-                )
-
-                validation_labels += list(
-                    label.tensor_split(partitions, dim=0)
-                )
+                validation_data += data_chunks
+                validation_labels += label_chunks
 
             else:
 
-                test_data += list(
-                    spectrogram.tensor_split(partitions, dim=0)
+                test_data += data_chunks
+                test_labels += label_chunks
+
+    # ========================================================
+    # IDMT-SMT-Drums
+    # ========================================================
+
+    for split_index in range(3):
+
+        split_recordings = (
+            IDMT_SPLITS[split_index]
+        )
+
+        for recording_index, audio_path in enumerate(
+            split_recordings,
+            start=1,
+        ):
+
+            annotation_path = (
+                idmt_path
+                / "annotation_xml"
+                / f"{audio_path.stem}.xml"
+            )
+
+            if not audio_path.is_file():
+
+                print(
+                    "\033[93m",
+                    "Skipping missing IDMT audio: "
+                    f"{audio_path.name}",
+                    "\033[0m",
+                    sep="",
                 )
 
-                test_labels += list(
-                    label.tensor_split(partitions, dim=0)
+                continue
+
+            if not annotation_path.is_file():
+
+                print(
+                    "\033[93m",
+                    "Skipping missing IDMT annotation: "
+                    f"{annotation_path.name}",
+                    "\033[0m",
+                    sep="",
                 )
 
+                continue
+
+            print(
+                "\033[96m",
+                f"IDMT "
+                f"{['train', 'validation', 'test'][split_index]} "
+                f"[{recording_index}/"
+                f"{len(split_recordings)}]: "
+                f"{audio_path.name}",
+                "\033[0m",
+                sep="",
+            )
+
+            spectrogram = readAudio(
+                audio_path,
+                representation=args.representation,
+            )
+
+            timesteps = (
+                spectrogram.shape[0]
+            )
+
+            label = read_idmt_annotations(
+                annotation_path,
+                timesteps,
+            )
+
+            data_chunks, label_chunks = (
+                split_recording(
+                    spectrogram,
+                    label,
+                )
+            )
+
+            if split_index == 0:
+
+                train_data += data_chunks
+                train_labels += label_chunks
+
+            elif split_index == 1:
+
+                validation_data += data_chunks
+                validation_labels += label_chunks
+
+            else:
+
+                test_data += data_chunks
+                test_labels += label_chunks
+
+    # ========================================================
     # Convert lists to tensors
-    train_data = torch.stack(train_data)
-    train_labels = torch.stack(train_labels)
+    # ========================================================
 
-    validation_data = torch.stack(validation_data)
-    validation_labels = torch.stack(validation_labels)
-
-    test_data = torch.stack(test_data)
-    test_labels = torch.stack(test_labels)
-
-    # Turn them into PyTorch tensor datasets
     print(
         "\033[96m",
         "Creating tensor datasets",
         "\033[0m",
         sep="",
     )
+
+    if not train_data:
+        raise RuntimeError(
+            "Training dataset is empty."
+        )
+
+    if not validation_data:
+        raise RuntimeError(
+            "Validation dataset is empty."
+        )
+
+    if not test_data:
+        raise RuntimeError(
+            "Test dataset is empty."
+        )
+
+    train_data = torch.stack(
+        train_data
+    )
+
+    train_labels = torch.stack(
+        train_labels
+    )
+
+    validation_data = torch.stack(
+        validation_data
+    )
+
+    validation_labels = torch.stack(
+        validation_labels
+    )
+
+    test_data = torch.stack(
+        test_data
+    )
+
+    test_labels = torch.stack(
+        test_labels
+    )
+
+    # ========================================================
+    # PyTorch datasets
+    # ========================================================
 
     train_dataset = TensorDataset(
         train_data,
@@ -371,7 +916,10 @@ if __name__ == "__main__":
         test_labels,
     )
 
+    # ========================================================
     # Verify split sizes
+    # ========================================================
+
     print(
         "\033[96m",
         "Train size: ",
@@ -396,7 +944,10 @@ if __name__ == "__main__":
         sep="",
     )
 
+    # ========================================================
     # Store every split
+    # ========================================================
+
     datasets = {
         "train": train_dataset,
         "validation": validation_dataset,
@@ -406,8 +957,12 @@ if __name__ == "__main__":
     for split, dataset in datasets.items():
 
         new_path = (
-            path
-            / f"enst+mdb_{args.representation}_{split}"
+            output_path
+            / (
+                f"enst+mdb+idmt_"
+                f"{args.representation}_"
+                f"{split}"
+            )
         ).with_suffix(".pt")
 
         print(
@@ -421,7 +976,10 @@ if __name__ == "__main__":
             sep="",
         )
 
-        torch.save(dataset, new_path)
+        torch.save(
+            dataset,
+            new_path,
+        )
 
         print(
             "\033[95m",
@@ -430,8 +988,14 @@ if __name__ == "__main__":
             sep="",
         )
 
+        # ----------------------------------------------------
         # Load dataset and verify
-        dataset_check = torch.load(new_path, weights_only=False)
+        # ----------------------------------------------------
+
+        dataset_check = torch.load(
+            new_path,
+            weights_only=False,
+        )
 
         print(
             "\033[92m",
@@ -460,30 +1024,42 @@ if __name__ == "__main__":
             "\033[92m",
             "     Each class has a frequency of: ",
             "\033[0m",
-            dataset_check[:][1].round().sum(dim=(0, 1)),
+            dataset_check[:][1]
+            .round()
+            .sum(dim=(0, 1)),
             sep="",
         )
 
-    # Verify that dataloaders work
+    # ========================================================
+    # Verify DataLoader
+    # ========================================================
+
     dataloader = DataLoader(
         train_dataset,
         batch_size=16,
     )
 
-    num_batches = len(dataloader)
+    num_batches = len(
+        dataloader
+    )
+
     mean = torch.zeros(1)
     std = torch.zeros(1)
 
-    for i, (features, labels) in enumerate(dataloader):
+    for i, (features, labels) in enumerate(
+        dataloader
+    ):
 
         if i == 0:
+
             print(
                 "\033[92m",
-                "Batched entry in dataloader has features of shape: ",
+                "Batched entry in dataloader has "
+                "features of shape: ",
                 "\033[0m",
                 features.shape,
                 "\033[92m",
-                ", and labels of shape: ",
+                ", and labels shape: ",
                 "\033[0m",
                 labels.shape,
                 sep="",
@@ -499,7 +1075,6 @@ if __name__ == "__main__":
             dim=(0, 1, 2),
         )
 
-    # Compute mean and std of dataset
     mean /= num_batches
     std /= num_batches
 
@@ -514,3 +1089,4 @@ if __name__ == "__main__":
         std,
         sep="",
     )
+

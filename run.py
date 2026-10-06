@@ -1,167 +1,622 @@
-import argparse
-import torch
-from torch import optim
-from torch.utils.data import DataLoader, ConcatDataset
-from ray import init, tune, train
-from ray.tune.search.optuna import OptunaSearch
-from time import time
-from models import RNN, CNN, ConvolutionalRNN, ConvolutionalTransformer, VisionTransformer
-from preprocess import compute_normalization, create_transform, load_dataset
-from evaluate import evaluate_model
-from train import train_model
+import os
+import tempfile
 from pathlib import Path
 
-# Only run this file directly
-assert __name__ == "__main__"
+# Keep Ray/Tune temporary files on the E: drive.
+TEMP_DIR = Path("E:/temp")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Declare an argument parser for this file
-parser = argparse.ArgumentParser("run.py")
-parser.add_argument("device", help="The device to run experiments on", type=str, default="cuda:0", nargs="?")
-parser.add_argument("--model", choices=["rnn", "cnn", "crnn", "ct", "vit"], help="The model to train", required=True)
-parser.add_argument("--dataset", choices=["enst+mdb", "egmd", "slakh", "adtof_yt"], help="The dataset to train on", nargs="+", required=True)
-parser.add_argument("--num_samples", type=int, help="Number of samples for Optuna RayTune", required=False, default=15)
-parser.add_argument("--early_stop", type=int, help="Number of epochs with stagnating validation loss before early stopping", required=False, default=15)
-parser.add_argument("--representation", choices=["logmel", "pcen"], default="logmel", help="Frontend the datasets were converted with")
-args = parser.parse_args()
+os.environ["TEMP"] = str(TEMP_DIR)
+os.environ["TMP"] = str(TEMP_DIR)
+tempfile.tempdir = str(TEMP_DIR)
 
-# Extract the absolute path of the data directory
-root_dir = Path(__file__).resolve().parent
-data_dir = root_dir / "data"
+import argparse
+import json
+import random
 
-# Initialize a Ray instance
-temp_dir = Path.home().resolve() / ".ray_temp"
-init(num_gpus=int(torch.cuda.is_available()), num_cpus=5, _temp_dir=temp_dir.as_posix())
+import numpy as np
+import ray
+import torch
+
+from models import CNN
+from preprocess import FeatureNormalize, create_transform, load_dataset
+from train import train_model
+from evaluate import evaluate_model
+
 
 # ----------------------------------------------------------------------------------------------------------------
+# Reproducibility
+# ----------------------------------------------------------------------------------------------------------------
 
-print(f"Main: Can use CUDA: {torch.cuda.is_available()}")
-device = args.device
-seed = int(time())
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-Model = {
-    "rnn": RNN, 
-    "cnn": CNN, 
-    "crnn": ConvolutionalRNN, 
-    "ct": ConvolutionalTransformer, 
-    "vit": VisionTransformer,
-    }[args.model]
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
 
-dataset_paths = [{
-    "enst+mdb": data_dir / "ENST+MDB",
-    "egmd": data_dir / "e-gmd-v1.0.0",
-    "slakh": data_dir / "slakh2100_flac_redux",
-    "adtof_yt": data_dir / "adtof",
-}[dataset] for dataset in args.dataset]
 
-study = "Architecture" if len(args.dataset) == 1 else "Dataset"
-suffix = f"_{args.representation}"
-experiment = Model.name
+# ----------------------------------------------------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------------------------------------------------
 
-num_samples = args.num_samples
-num_epochs = 100
+def main():
 
-batch_size = 128
+    parser = argparse.ArgumentParser()
 
-train_paths = [dataset_path / (dataset + suffix + "_train.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
-val_paths = [dataset_path / (dataset + suffix + "_validation.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
-test_paths = [dataset_path / (dataset + suffix + "_test.pt") for dataset_path, dataset in zip(dataset_paths, args.dataset)]
-
-feature_mean, feature_std = compute_normalization(train_paths, device=device)
-
-print(f"Traning data has a mean of: {feature_mean}, and a std of: {feature_std}")
-
-config = {
-    "num_epochs": num_epochs,
-    "batch_size": batch_size,
-
-    "train_paths": train_paths,
-    "val_paths": val_paths,
-
-    "transforms": {
-        "mean": feature_mean,
-        "std": feature_std
-    },
-
-    "lr": tune.loguniform(1e-4, 5e-3),
-    "weight_decay": tune.loguniform(1e-6, 1e-2),
-    "optimizer": optim.AdamW,
-
-    "Model": Model,
-    "parameters": Model.hyperparameters,
-
-    "device": device,
-    "seed": seed,
-
-    "representation": args.representation,
-}
-
-# Run the experiments
-tuner = tune.Tuner(
-    tune.with_resources(
-        trainable=train_model,
-        resources={"gpu": int(torch.cuda.is_available())}
-    ),
-    param_space=config,
-    tune_config=tune.TuneConfig(
-        num_samples=num_samples,
-        metric="best_epoch/Micro F1",
-        mode="max",
-        search_alg=OptunaSearch(
-            metric="best_epoch/Micro F1",
-            mode="max"
-        )
-    ),
-    run_config=train.RunConfig(
-        stop={"epochs_since_improvement": args.early_stop},
-        checkpoint_config=train.CheckpointConfig(num_to_keep=1),
-        verbose=2
+    parser.add_argument(
+        "--dataset",
+        nargs="+",
+        choices=[
+            "enst+mdb",
+            "enst+mdb+idmt",
+            "egmd",
+            "slakh",
+            "adtof_yt",
+        ],
+        default=["enst+mdb+idmt"],
+        help="Dataset(s) to use.",
     )
-)
-results = tuner.fit()
 
-# Print the results
-best_result = results.get_best_result("Micro F1", mode="max", scope="all")
-print(f"Best result config: {best_result.config}")
-print(f"Best result validation loss: {best_result.metrics['best_epoch']['Validation Loss']}")
-print(f"Best result validation micro F1: {best_result.metrics['best_epoch']['Micro F1']}")
-print(f"Best result validation macro F1: {best_result.metrics['best_epoch']['Macro F1']}")
-print(f"Best result validation class F1: {best_result.metrics['best_epoch']['Class F1']}")
+    parser.add_argument(
+        "--representation",
+        choices=[
+            "logmel",
+            "pcen",
+        ],
+        default="logmel",
+        help="Acoustic representation.",
+    )
 
-# Load the state_dict of the best performing model
-best_checkpoint = best_result.get_best_checkpoint("Micro F1", mode="max")
-state_dict = torch.load(Path(best_checkpoint.path) / "model.pt")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed.",
+    )
 
-# Store the best performing model, config and its metrics to study/experiment path
-study_path = (root_dir / "experiments" / args.representation / study / experiment / "+".join(args.dataset).upper().replace("_", "-"))
-study_path.mkdir(parents=True, exist_ok=True)
-torch.save(state_dict, study_path / "model.pt")
-torch.save(best_result.config, study_path / "config.pt")
-best_result.metrics_dataframe.to_csv(study_path / "metrics.csv")
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=15,
+        help="Number of Ray Tune samples.",
+    )
 
-# Load the best performing model
-model = Model(**best_result.config["parameters"])
-model.load_state_dict(state_dict)
+    parser.add_argument(
+        "--early-stop",
+        type=int,
+        default=15,
+        help="Number of epochs without improvement.",
+    )
 
-# Create a test dataloader and preprocessing transforms
-test_loader = DataLoader(ConcatDataset(map(load_dataset, test_paths)), batch_size=batch_size, num_workers=4, pin_memory=True)
-transforms = create_transform(mean=feature_mean, std=feature_std, channels_last=True)
+    parser.add_argument(
+        "--num-epochs",
+        type=int,
+        default=10,
+        help="Maximum number of training epochs.",
+    )
 
-# And evaluate it
-test_f1_micro, test_f1_macro, test_f1_class = evaluate_model(model, test_loader=test_loader, transforms=transforms, seed=seed, device=device)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=16,
+        help="Training batch size.",
+    )
 
-print(" ---------- Evaluation of best perfoming model ---------- ")
-print(f"Micro F1: {test_f1_micro.item():.4f}")
-print(f"Macro F1: {test_f1_macro.item():.4f}")
-print(f"Class F1: {[f'{test_f1.item():.4f}' for test_f1 in test_f1_class]}")
+    args = parser.parse_args()
 
-# Finally, write the results to an output file
-with open(study_path / "results.txt", "w") as output:
-    print(f"Best result config: {best_result.config}", file=output)
-    print(f"Best result final validation loss: {best_result.metrics['best_epoch']['Validation Loss']}", file=output)
-    print(f"Best result final validation micro F1: {best_result.metrics['best_epoch']['Micro F1']}", file=output)
-    print(f"Best result final validation macro F1: {best_result.metrics['best_epoch']['Macro F1']}", file=output)
-    print(f"Best result final validation class F1: {best_result.metrics['best_epoch']['Class F1']}", file=output)
-    print(" ---------- Evaluation of best perfoming model ---------- ", file=output)
-    print(f"Micro F1: {test_f1_micro.item():.4f}", file=output)
-    print(f"Macro F1: {test_f1_macro.item():.4f}", file=output)
-    print(f"Class F1: {[f'{test_f1.item():.4f}' for test_f1 in test_f1_class]}", file=output)
+    set_seed(args.seed)
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Paths
+    # ----------------------------------------------------------------------------------------------------------------
+
+    repo_dir = Path(__file__).resolve().parent
+
+    data_dir = (
+        repo_dir
+        / "data"
+    )
+
+    dataset_directories = {
+
+        "enst+mdb":
+            data_dir
+            / "ENST+MDB",
+
+        "enst+mdb+idmt":
+            data_dir
+            / "ENST+MDB",
+
+        "egmd":
+            data_dir
+            / "e-gmd-v1.0.0",
+
+        "slakh":
+            data_dir
+            / "slakh2100_flac_redux",
+
+        "adtof_yt":
+            data_dir
+            / "adtof",
+    }
+
+    dataset_paths = [
+        dataset_directories[dataset]
+        for dataset in args.dataset
+    ]
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Dataset filenames
+    # ----------------------------------------------------------------------------------------------------------------
+
+    suffix = (
+        f"_{args.representation}"
+    )
+
+    train_paths = [
+        dataset_path
+        / f"{dataset}{suffix}_train.pt"
+        for dataset_path, dataset
+        in zip(
+            dataset_paths,
+            args.dataset,
+        )
+    ]
+
+    val_paths = [
+        dataset_path
+        / f"{dataset}{suffix}_validation.pt"
+        for dataset_path, dataset
+        in zip(
+            dataset_paths,
+            args.dataset,
+        )
+    ]
+
+    test_paths = [
+        dataset_path
+        / f"{dataset}{suffix}_test.pt"
+        for dataset_path, dataset
+        in zip(
+            dataset_paths,
+            args.dataset,
+        )
+    ]
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Verify dataset files
+    # ----------------------------------------------------------------------------------------------------------------
+
+    print(
+        "Dataset files:"
+    )
+
+    for path in train_paths:
+        print(
+            f"  Train: {path}"
+        )
+
+    for path in val_paths:
+        print(
+            f"  Validation: {path}"
+        )
+
+    for path in test_paths:
+        print(
+            f"  Test: {path}"
+        )
+
+    missing_files = [
+        path
+        for path in (
+            train_paths
+            + val_paths
+            + test_paths
+        )
+        if not path.exists()
+    ]
+
+    if missing_files:
+
+        print(
+            "\nMissing dataset files:"
+        )
+
+        for path in missing_files:
+
+            print(
+                f"  {path}"
+            )
+
+        raise FileNotFoundError(
+            "One or more required dataset files are missing."
+        )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Study
+    # ----------------------------------------------------------------------------------------------------------------
+
+    study = (
+        "Architecture"
+        if len(args.dataset) == 1
+        else "Dataset"
+    )
+
+    experiment = (
+        f"{args.dataset[0]}_"
+        f"{args.representation}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Device
+    # ----------------------------------------------------------------------------------------------------------------
+
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+
+    print(
+        f"\nUsing device: {device}"
+    )
+
+    print(
+        f"Representation: "
+        f"{args.representation}"
+    )
+
+    print(
+        f"Dataset: "
+        f"{args.dataset}"
+    )
+
+    print(
+        f"Study: {study}"
+    )
+
+    print(
+        f"Experiment: {experiment}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Load training datasets
+    # ----------------------------------------------------------------------------------------------------------------
+
+    train_datasets = [
+        load_dataset(path)
+        for path in train_paths
+    ]
+
+    train_dataset = torch.utils.data.ConcatDataset(
+        train_datasets
+    )
+
+    print(
+        f"\nTraining dataset size: "
+        f"{len(train_dataset)}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Compute normalization statistics
+    # ----------------------------------------------------------------------------------------------------------------
+
+    print(
+        "Computing normalization statistics..."
+    )
+
+    all_features = []
+
+    for dataset in train_datasets:
+
+        for features, _ in dataset:
+
+            all_features.append(
+                features
+            )
+
+    features = torch.cat(
+        all_features,
+        dim=0,
+    )
+
+    mean = features.mean()
+
+    std = features.std()
+
+    print(
+        f"Training mean: {mean}"
+    )
+
+    print(
+        f"Training std: {std}"
+    )
+
+    del all_features
+    del features
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Normalization transform
+    # ----------------------------------------------------------------------------------------------------------------
+
+    normalization_transform = create_transform(
+        mean=mean,
+        std=std,
+        channels_last=False,
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Ray configuration
+    # ----------------------------------------------------------------------------------------------------------------
+
+    config = {
+
+        "train_paths":
+            train_paths,
+
+        "val_paths":
+            val_paths,
+
+        # Normalization statistics.
+        #
+        # train.py reads these values inside
+        # the Ray training process.
+        "mean":
+            mean,
+
+        "std":
+            std,
+
+        "optimizer":
+            "AdamW",
+
+        "Model":
+            CNN,
+
+        "parameters":
+            {},
+
+        "lr":
+            1e-3,
+
+        "weight_decay":
+            1e-4,
+
+        "device":
+            str(device),
+
+        "seed":
+            args.seed,
+
+        "representation":
+            args.representation,
+
+        "num_workers":
+            0,
+
+        "early_stop":
+            args.early_stop,
+
+        "num_epochs":
+            args.num_epochs,
+
+        "batch_size":
+            args.batch_size,
+    }
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Ray initialization
+    # ----------------------------------------------------------------------------------------------------------------
+
+    ray.init(
+        ignore_reinit_error=True,
+        include_dashboard=False,
+        num_cpus=1,
+        num_gpus=(
+            1
+            if torch.cuda.is_available()
+            else 0
+        ),
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Training
+    # ----------------------------------------------------------------------------------------------------------------
+
+    print(
+        "\nStarting training..."
+    )
+
+    results = train_model(
+        config=config,
+        num_samples=args.num_samples,
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Check training result
+    # ----------------------------------------------------------------------------------------------------------------
+
+    if results is None:
+
+        raise RuntimeError(
+            "Training did not return any results."
+        )
+
+    # Check that at least one trial completed.
+    dataframe = results.get_dataframe()
+
+    if dataframe.empty:
+
+        raise RuntimeError(
+            "Ray Tune returned no completed trial results."
+        )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Best trial
+    # ----------------------------------------------------------------------------------------------------------------
+
+    best_result = (
+        results.get_best_result(
+            metric="Micro F1",
+            mode="max",
+        )
+    )
+
+    if best_result is None:
+
+        raise RuntimeError(
+            "No successful training trial was found."
+        )
+
+    best_micro_f1 = (
+        best_result.metrics.get(
+            "Micro F1"
+        )
+    )
+
+    print(
+        "\nTraining completed."
+    )
+
+    print(
+        f"Best validation Micro F1: "
+        f"{best_micro_f1}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Best checkpoint
+    # ----------------------------------------------------------------------------------------------------------------
+
+    best_checkpoint = (
+        best_result.checkpoint
+    )
+
+    if best_checkpoint is None:
+
+        raise RuntimeError(
+            "The best training trial did not "
+            "produce a checkpoint."
+        )
+
+    print(
+        f"Best checkpoint: "
+        f"{best_checkpoint}"
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Test dataset
+    # ----------------------------------------------------------------------------------------------------------------
+
+    test_datasets = [
+        load_dataset(path)
+        for path in test_paths
+    ]
+
+    test_dataset = torch.utils.data.ConcatDataset(
+        test_datasets
+    )
+
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=0,
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Test transform
+    # ----------------------------------------------------------------------------------------------------------------
+
+    test_transform = create_transform(
+        mean=mean,
+        std=std,
+        channels_last=False,
+    )
+
+    for dataset in test_datasets:
+
+        dataset.transform = (
+            test_transform
+        )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Evaluation
+    # ----------------------------------------------------------------------------------------------------------------
+
+    print(
+        "\nEvaluating on test set..."
+    )
+
+    test_metrics = evaluate_model(
+        best_checkpoint,
+        test_loader,
+        normalization_transform,
+        device=device,
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Print test results
+    # ----------------------------------------------------------------------------------------------------------------
+
+    print(
+        "\nTest results:"
+    )
+
+    print(
+        json.dumps(
+            test_metrics,
+            indent=2,
+            default=str,
+        )
+    )
+
+    # ----------------------------------------------------------------------------------------------------------------
+    # Save experiment information
+    # ----------------------------------------------------------------------------------------------------------------
+
+    output_dir = (
+        repo_dir
+        / "experiments"
+        / args.representation
+        / study
+        / experiment
+        / args.dataset[0].upper()
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    results_path = (
+        output_dir
+        / "test_results.json"
+    )
+
+    with open(
+        results_path,
+        "w",
+        encoding="utf-8",
+    ) as f:
+
+        json.dump(
+            test_metrics,
+            f,
+            indent=2,
+            default=str,
+        )
+
+    print(
+        f"\nResults saved to: "
+        f"{results_path}"
+    )
+
+    ray.shutdown()
+
+
+if __name__ == "__main__":
+    main()
+

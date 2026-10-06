@@ -44,33 +44,18 @@ MDB_MAPPING = {
 
     # Snare drum
     "SD": 1,
-    "SDB": 1,
-    "SDD": 1,
-    "SDF": 1,
-    "SDG": 1,
-    "SDNS": 1,
-    "SST": 1,
-
-    # Toms - excluded
-    "HIT": None,
-    "MHT": None,
-    "HFT": None,
-    "LFT": None,
 
     # Hi-hat
-    "CHH": 2,
-    "OHH": 2,
-    "PHH": 2,
+    "HH": 2,
 
-    # Tambourine - excluded
-    "TMB": None,
+    # Toms - excluded
+    "TT": None,
 
     # Cymbals - excluded
-    "RDC": None,
-    "RDB": None,
-    "CRC": None,
-    "CHC": None,
-    "SPC": None,
+    "CY": None,
+
+    # Other percussion - excluded
+    "OT": None,
 }
 
 
@@ -218,3 +203,4 @@ MIDI_MAPPING = {
     86: None,
     87: None,
 }
+
