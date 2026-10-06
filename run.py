@@ -581,7 +581,7 @@ def main():
     test_transform = create_transform(
         mean=mean,
         std=std,
-        channels_last=True,
+        channels_last=False,
     )
 
     for dataset in test_datasets:
@@ -627,10 +627,6 @@ def main():
     )
 
     def test_model_transform(inputs):
-
-        inputs = test_transform(
-            inputs
-        )
 
         inputs = prepare_features_for_model(
             inputs
