@@ -8,7 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 
-from ray import train
+import ray
+from ray import train, tune
 
 from preprocess import (
     compute_infrequency_weights,
@@ -93,10 +94,15 @@ def prepare_features_for_model(features):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# Ray training function
+# Single Ray Tune trial
 # ----------------------------------------------------------------------------------------------------------------
 
-def train_model(config):
+def _train_trial(config):
+    """
+    Execute one training trial.
+
+    This function is called by Ray Tune.
+    """
 
     seed = config.get(
         "seed",
@@ -105,6 +111,10 @@ def train_model(config):
 
     set_seed(seed)
 
+    # ----------------------------------------------------------------------------------------------------------------
+    # Device
+    # ----------------------------------------------------------------------------------------------------------------
+
     device_name = config.get(
         "device",
         "cpu",
@@ -112,7 +122,7 @@ def train_model(config):
 
     if (
         torch.cuda.is_available()
-        and device_name != "cpu"
+        and str(device_name) != "cpu"
     ):
         device = torch.device(
             device_name
@@ -122,8 +132,15 @@ def train_model(config):
             "cpu"
         )
 
-    num_epochs = config["num_epochs"]
-    batch_size = config["batch_size"]
+    num_epochs = config.get(
+        "num_epochs",
+        10,
+    )
+
+    batch_size = config.get(
+        "batch_size",
+        16,
+    )
 
     train_paths = config["train_paths"]
     val_paths = config["val_paths"]
@@ -183,18 +200,26 @@ def train_model(config):
     # Normalization
     # ----------------------------------------------------------------------------------------------------------------
 
-    transform_config = config.get(
-        "transforms",
-        {},
-    )
-
-    feature_mean = transform_config.get(
+    feature_mean = config.get(
         "mean"
     )
 
-    feature_std = transform_config.get(
+    feature_std = config.get(
         "std"
     )
+
+    # Support tensors and ordinary numeric values.
+    if feature_mean is not None:
+        feature_mean = torch.as_tensor(
+            feature_mean,
+            dtype=torch.float32,
+        )
+
+    if feature_std is not None:
+        feature_std = torch.as_tensor(
+            feature_std,
+            dtype=torch.float32,
+        )
 
     train_transform = create_transform(
         mean=feature_mean,
@@ -313,15 +338,49 @@ def train_model(config):
     # Optimizer
     # ----------------------------------------------------------------------------------------------------------------
 
-    Optimizer = config.get(
+    optimizer_name = config.get(
         "optimizer",
-        optim.AdamW,
+        "AdamW",
+    )
+
+    if isinstance(
+        optimizer_name,
+        str,
+    ):
+
+        if optimizer_name.lower() == "adamw":
+
+            Optimizer = optim.AdamW
+
+        elif optimizer_name.lower() == "adam":
+
+            Optimizer = optim.Adam
+
+        else:
+
+            raise ValueError(
+                f"Unsupported optimizer: "
+                f"{optimizer_name}"
+            )
+
+    else:
+
+        Optimizer = optimizer_name
+
+    learning_rate = config.get(
+        "lr",
+        1e-3,
+    )
+
+    weight_decay = config.get(
+        "weight_decay",
+        1e-4,
     )
 
     optimizer = Optimizer(
         model.parameters(),
-        lr=config["lr"],
-        weight_decay=config["weight_decay"],
+        lr=learning_rate,
+        weight_decay=weight_decay,
     )
 
     # ----------------------------------------------------------------------------------------------------------------
@@ -386,16 +445,6 @@ def train_model(config):
                 device,
                 non_blocking=True,
             )
-
-            # Convert:
-            #
-            # [B, T, F, C]
-            #
-            # into:
-            #
-            # [B, C, T, F]
-            #
-            # required by Conv2d.
 
             features = (
                 prepare_features_for_model(
@@ -463,14 +512,6 @@ def train_model(config):
                     device,
                     non_blocking=True,
                 )
-
-                # Convert:
-                #
-                # [B, T, F, C]
-                #
-                # into:
-                #
-                # [B, C, T, F]
 
                 features = (
                     prepare_features_for_model(
@@ -675,7 +716,6 @@ def train_model(config):
         # ============================================================================================================
 
         report_metrics = {
-
             "Training Loss":
                 training_loss,
 
@@ -752,4 +792,61 @@ def train_model(config):
         f"Best validation Micro F1: "
         f"{best_micro_f1}"
     )
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Ray Tune wrapper
+# ----------------------------------------------------------------------------------------------------------------
+
+def train_model(
+    config,
+    num_samples=1,
+):
+    """
+    Run the training function through Ray Tune.
+
+    Parameters
+    ----------
+    config:
+        Training configuration.
+
+    num_samples:
+        Number of Ray Tune trials.
+    """
+
+    tune_config = tune.TuneConfig(
+        metric="Micro F1",
+        mode="max",
+        num_samples=num_samples,
+    )
+
+    run_config = train.RunConfig(
+        name=(
+            f"adt_"
+            f"{config.get('representation', 'unknown')}"
+        ),
+        storage_path="E:/temp/ray_results",
+        verbose=1,
+    )
+
+    tuner = tune.Tuner(
+        tune.with_resources(
+            _train_trial,
+            resources={
+                "cpu": 1,
+                "gpu": (
+                    1
+                    if torch.cuda.is_available()
+                    else 0
+                ),
+            },
+        ),
+        param_space=config,
+        tune_config=tune_config,
+        run_config=run_config,
+    )
+
+    results = tuner.fit()
+
+    return results
 
