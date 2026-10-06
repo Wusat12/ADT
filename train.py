@@ -134,7 +134,7 @@ def _train_trial(config):
 
     num_epochs = config.get(
         "num_epochs",
-        10,
+        50,
     )
 
     batch_size = config.get(
@@ -681,7 +681,7 @@ def _train_trial(config):
             epochs_since_improvement = 0
 
             checkpoint_path = (
-                Path("E:/temp")
+                Path("/kaggle/working/temp")
                 / (
                     f"adt_checkpoint_"
                     f"{os.getpid()}_"
@@ -753,7 +753,7 @@ def _train_trial(config):
                 epoch + 1,
         }
 
-        train.report(
+        tune.report(
             report_metrics,
             checkpoint=checkpoint,
         )
@@ -820,13 +820,12 @@ def train_model(
         num_samples=num_samples,
     )
 
-    run_config = train.RunConfig(
+    run_config = tune.RunConfig(
         name=(
             f"adt_"
             f"{config.get('representation', 'unknown')}"
         ),
-        storage_path="E:/temp/ray_results",
-        verbose=1,
+        storage_path="/kaggle/working/ray_results",
     )
 
     tuner = tune.Tuner(
