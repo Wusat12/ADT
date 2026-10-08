@@ -246,7 +246,8 @@ def create_idmt_splits(directory_idmt):
     )
 
     recordings = sorted(
-        audio_directory.glob("*#MIX.wav")
+        list(audio_directory.glob("*#MIX.wav"))
+        + list(audio_directory.glob("*_MIX.wav"))
     )
 
     if not recordings:
