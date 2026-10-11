@@ -2,6 +2,7 @@ import argparse
 import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import soundfile as sf
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -96,6 +97,12 @@ parser.add_argument(
     "--enst_mdb_only",
     action="store_true",
     help="Process ENST-Drums and MDB Drums, but skip IDMT",
+)
+
+parser.add_argument(
+    "--enst_idmt_polyphonic_only",
+    action="store_true",
+    help="Convert combined ENST wet mixes and IDMT MIX recordings",
 )
 
 args = parser.parse_args()
@@ -294,6 +301,97 @@ def create_idmt_splits(directory_idmt):
 # IDMT XML annotation parser
 # ============================================================
 
+
+def create_enst_wet_mix_splits(directory_enst):
+    """
+    Experiment 2 ENST splits:
+    - Multi-class recordings: deterministic 70/15/15 split
+    - Single-class recordings: training only
+    - Zero-target-class recordings: excluded
+    """
+    directory_enst = Path(directory_enst)
+
+    multi_class = []
+    single_class = []
+
+    for drummer_idx in range(1, 4):
+        drummer = f"drummer_{drummer_idx}"
+        wet_mix_dir = directory_enst / drummer / "audio" / "wet_mix"
+        annotation_dir = directory_enst / drummer / "annotation"
+
+        for audio_path in sorted(wet_mix_dir.glob("*.wav")):
+            annotation_path = annotation_dir / f"{audio_path.stem}.txt"
+
+            if not annotation_path.is_file():
+                raise FileNotFoundError(annotation_path)
+
+            present_classes = set()
+
+            for line in annotation_path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines():
+                parts = line.split()
+
+                if len(parts) < 2:
+                    continue
+
+                try:
+                    float(parts[0])
+                except ValueError:
+                    continue
+
+                event = parts[-1]
+
+                # Match readAnnotations() normalization.
+                if event.endswith("-") or event[-1:].isdigit():
+                    event = event[:-1]
+
+                label = ENST_MAPPING.get(event)
+
+                if label is not None:
+                    present_classes.add(label)
+
+            if len(present_classes) >= 2:
+                multi_class.append(audio_path)
+
+            elif len(present_classes) == 1:
+                single_class.append(audio_path)
+
+            # Zero-target-class recordings are excluded.
+
+    if not multi_class:
+        raise RuntimeError("No multi-class ENST recordings found.")
+
+    rng = random.Random(100)
+    rng.shuffle(multi_class)
+
+    n_total = len(multi_class)
+    n_train = int(n_total * 0.70)
+    n_validation = int(n_total * 0.15)
+
+    train_files = multi_class[:n_train] + sorted(single_class)
+
+    validation_files = multi_class[
+        n_train:n_train + n_validation
+    ]
+
+    test_files = multi_class[
+        n_train + n_validation:
+    ]
+
+    print(
+        f"ENST: {len(multi_class)} multi-class, "
+        f"{len(single_class)} single-class"
+    )
+    print(
+        f"ENST splits: train={len(train_files)}, "
+        f"validation={len(validation_files)}, "
+        f"test={len(test_files)}"
+    )
+
+    return train_files, validation_files, test_files
+
+
 def read_idmt_annotations(
     path,
     num_frames,
@@ -433,7 +531,152 @@ def split_recording(
 # Main conversion
 # ============================================================
 
+
+def convert_enst_idmt_polyphonic(
+    enst_path, idmt_path, output_path, representation
+):
+    """Convert combined ENST wet mixes and IDMT MIX recordings."""
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    enst_splits = create_enst_wet_mix_splits(enst_path)
+    idmt_splits = create_idmt_splits(idmt_path)
+
+    split_names = ("train", "validation", "test")
+    processed = {"ENST": 0, "IDMT": 0}
+
+    for split_index, split_name in enumerate(split_names):
+        features_all = []
+        labels_all = []
+
+        # ENST wet-mix recordings
+        for audio_path in enst_splits[split_index]:
+            drummer = audio_path.parent.parent.parent.name
+            annotation_path = (
+                enst_path / drummer / "annotation"
+                / f"{audio_path.stem}.txt"
+            )
+
+            if not annotation_path.is_file():
+                raise FileNotFoundError(annotation_path)
+
+            print(f"ENST {split_name}: {drummer}/{audio_path.name}")
+
+            features = readAudio(
+                audio_path,
+                representation=representation,
+            )
+
+            # Use the original, unpadded audio length for labels.
+            audio_info = sf.info(str(audio_path))
+
+            duration_frames = (
+                audio_info.frames
+                / audio_info.samplerate
+                / SECONDS_PER_FRAME
+            )
+
+            valid_frames = min(
+                features.shape[0],
+                max(1, int(duration_frames + 1e-6)),
+            )
+
+            labels = readAnnotations(
+                annotation_path,
+                ENST_MAPPING,
+                valid_frames,
+                NUM_LABELS,
+            )
+
+            # Match the audio frontend's 400-frame padding.
+            if valid_frames < features.shape[0]:
+                labels = torch.nn.functional.pad(
+                    labels,
+                    (0, 0, 0, features.shape[0] - valid_frames),
+                )
+
+            feature_chunks, label_chunks = split_recording(
+                features, labels
+            )
+
+            features_all.extend(feature_chunks)
+            labels_all.extend(label_chunks)
+            processed["ENST"] += 1
+
+        # IDMT MIX recordings
+        for audio_path in idmt_splits[split_index]:
+            annotation_path = (
+                idmt_path / "annotation_xml"
+                / f"{audio_path.stem}.xml"
+            )
+
+            if not annotation_path.is_file():
+                raise FileNotFoundError(annotation_path)
+
+            print(f"IDMT {split_name}: {audio_path.name}")
+
+            features = readAudio(
+                audio_path,
+                representation=representation,
+            )
+
+            labels = read_idmt_annotations(
+                annotation_path,
+                features.shape[0],
+            )
+
+            feature_chunks, label_chunks = split_recording(
+                features, labels
+            )
+
+            features_all.extend(feature_chunks)
+            labels_all.extend(label_chunks)
+            processed["IDMT"] += 1
+
+        if not features_all:
+            raise RuntimeError(f"Empty split: {split_name}")
+
+        dataset = TensorDataset(
+            torch.stack(features_all),
+            torch.stack(labels_all),
+        )
+
+        output_file = (
+            output_path
+            / f"enst_idmt_polyphonic_{representation}_{split_name}.pt"
+        )
+
+        torch.save(dataset, output_file)
+
+        print(f"Saved {output_file}: {len(dataset)} chunks")
+
+    print("Processed recordings:", processed)
+
+
 if __name__ == "__main__":
+    if args.enst_idmt_polyphonic_only:
+        data_root = Path(
+            "/kaggle/input/datasets/wusatullah/adt-datasets/"
+            "ADT_Datasets"
+        )
+
+        enst_path = data_root / args.directory_enst
+        idmt_path = data_root / args.directory_idmt
+
+        output_path = (
+            Path(__file__).resolve().parent.parent
+            / "data"
+            / "ENST_IDMT_Polyphonic"
+        )
+
+        convert_enst_idmt_polyphonic(
+            enst_path,
+            idmt_path,
+            output_path,
+            args.representation,
+        )
+
+        raise SystemExit(0)
+
 
     # --------------------------------------------------------
     # Declare dataset paths

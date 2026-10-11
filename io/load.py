@@ -249,6 +249,10 @@ def readAnnotations(
                 # Skip if label is None
                 continue
 
+            # Ignore annotations outside the feature tensor.
+            if not 0 <= frame < num_frames:
+                continue
+
             frame_indices.append(frame)
             label_indices.append(label)
 
