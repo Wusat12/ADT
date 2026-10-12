@@ -82,7 +82,7 @@ parser.add_argument(
 parser.add_argument(
     "--representation",
     help="Acoustic representation to use",
-    choices=["logmel", "pcen"],
+    choices=("logmel", "pcen", "mel"),
     required=False,
     default="logmel",
 )
@@ -532,6 +532,70 @@ def split_recording(
 # ============================================================
 
 
+
+def save_linear_mel_recording(
+    features,
+    labels,
+    output_path,
+    split_name,
+    source_name,
+    recording_id,
+):
+    """
+    Save full-recording linear Mel for trainable PCEN.
+
+    Features: [time, 84, 1]
+    Labels:   [time, 3]
+
+    Recording boundaries remain intact so PCEN smoothing
+    can operate over the complete temporal sequence.
+    """
+    if features.ndim != 3 or features.shape[1:] != (84, 1):
+        raise ValueError(
+            f"Expected linear Mel [time, 84, 1], "
+            f"got {tuple(features.shape)}"
+        )
+
+    if labels.ndim != 2 or labels.shape[1] != NUM_LABELS:
+        raise ValueError(
+            f"Expected labels [time, {NUM_LABELS}], "
+            f"got {tuple(labels.shape)}"
+        )
+
+    if features.shape[0] != labels.shape[0]:
+        raise ValueError("Linear Mel and label lengths differ.")
+
+    if features.shape[0] % CHUNK_FRAMES != 0:
+        raise ValueError("Recording is not divisible into 400-frame chunks.")
+
+    recording_path = (
+        output_path
+        / "mel_recordings"
+        / split_name
+        / source_name
+        / f"{recording_id}.pt"
+    )
+
+    recording_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if recording_path.exists():
+        raise FileExistsError(
+            f"Recording output already exists: {recording_path}"
+        )
+
+    torch.save(
+        {
+            "mel": features.contiguous(),
+            "labels": labels.contiguous(),
+            "source": source_name,
+            "recording_id": recording_id,
+        },
+        recording_path,
+    )
+
+    return recording_path
+
+
 def convert_enst_idmt_polyphonic(
     enst_path, idmt_path, output_path, representation
 ):
@@ -547,6 +611,7 @@ def convert_enst_idmt_polyphonic(
     for split_index, split_name in enumerate(split_names):
         features_all = []
         labels_all = []
+        saved_recordings = 0
 
         # ENST wet-mix recordings
         for audio_path in enst_splits[split_index]:
@@ -594,12 +659,23 @@ def convert_enst_idmt_polyphonic(
                     (0, 0, 0, features.shape[0] - valid_frames),
                 )
 
-            feature_chunks, label_chunks = split_recording(
-                features, labels
-            )
+            if representation == "mel":
+                save_linear_mel_recording(
+                    features=features,
+                    labels=labels,
+                    output_path=output_path,
+                    split_name=split_name,
+                    source_name="ENST",
+                    recording_id=f"{drummer}__{audio_path.stem}",
+                )
+                saved_recordings += 1
+            else:
+                feature_chunks, label_chunks = split_recording(
+                    features, labels
+                )
 
-            features_all.extend(feature_chunks)
-            labels_all.extend(label_chunks)
+                features_all.extend(feature_chunks)
+                labels_all.extend(label_chunks)
             processed["ENST"] += 1
 
         # IDMT MIX recordings
@@ -624,13 +700,34 @@ def convert_enst_idmt_polyphonic(
                 features.shape[0],
             )
 
-            feature_chunks, label_chunks = split_recording(
-                features, labels
-            )
+            if representation == "mel":
+                save_linear_mel_recording(
+                    features=features,
+                    labels=labels,
+                    output_path=output_path,
+                    split_name=split_name,
+                    source_name="IDMT",
+                    recording_id=audio_path.stem,
+                )
+                saved_recordings += 1
+            else:
+                feature_chunks, label_chunks = split_recording(
+                    features, labels
+                )
 
-            features_all.extend(feature_chunks)
-            labels_all.extend(label_chunks)
+                features_all.extend(feature_chunks)
+                labels_all.extend(label_chunks)
             processed["IDMT"] += 1
+
+        if representation == "mel":
+            if saved_recordings == 0:
+                raise RuntimeError(f"Empty split: {split_name}")
+
+            print(
+                f"Saved {saved_recordings} full Mel recordings "
+                f"for {split_name}"
+            )
+            continue
 
         if not features_all:
             raise RuntimeError(f"Empty split: {split_name}")

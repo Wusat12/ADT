@@ -221,29 +221,22 @@ def _train_trial(config):
             dtype=torch.float32,
         )
 
-    train_transform = create_transform(
-        mean=feature_mean,
-        std=feature_std,
-        channels_last=False,
-    )
-
-    validation_transform = create_transform(
-        mean=feature_mean,
-        std=feature_std,
-        channels_last=False,
-    )
-
-    for dataset in train_datasets:
-
-        dataset.transform = (
-            train_transform
+    # Normalize explicitly in the training and validation loops.
+    # TensorDataset does not automatically execute .transform.
+    if (feature_mean is None) != (feature_std is None):
+        raise ValueError(
+            "Both mean and std must be supplied for normalization."
         )
 
-    for dataset in validation_datasets:
-
-        dataset.transform = (
-            validation_transform
+    normalizer = (
+        create_transform(
+            mean=feature_mean,
+            std=feature_std,
+            channels_last=False,
         )
+        if feature_mean is not None
+        else None
+    )
 
     # ----------------------------------------------------------------------------------------------------------------
     # DataLoaders
@@ -446,6 +439,9 @@ def _train_trial(config):
                 non_blocking=True,
             )
 
+            if normalizer is not None:
+                features = normalizer(features)
+
             features = (
                 prepare_features_for_model(
                     features
@@ -512,6 +508,9 @@ def _train_trial(config):
                     device,
                     non_blocking=True,
                 )
+
+                if normalizer is not None:
+                    features = normalizer(features)
 
                 features = (
                     prepare_features_for_model(

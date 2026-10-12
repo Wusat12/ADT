@@ -167,6 +167,11 @@ def compute_frontend(
     elif representation == "pcen":
         features = compute_pcen_mel_spectrogram(waveform, sr=sr)
 
+    elif representation == "mel":
+        # Linear Mel for the trainable PCEN frontend.
+        # PCEN and delta features will be computed during training.
+        return compute_mel_spectrogram(waveform, sr=sr)
+
     else:
         raise ValueError(
             f"Unknown representation '{representation}'. "
