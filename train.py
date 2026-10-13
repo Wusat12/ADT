@@ -15,7 +15,11 @@ from preprocess import (
     compute_infrequency_weights,
     create_transform,
     load_dataset,
+    MelRecordingDataset,
 )
+
+from models.trainable_pcen import TrainablePCEN
+from load import trainable_pcen_features
 
 from evaluate import (
     compute_peaks,
@@ -174,19 +178,39 @@ def _train_trial(config):
         f"Validation paths: {val_paths}"
     )
 
+    # Select dataset handling for the trainable-PCEN frontend.
+    # Other frontends retain their existing chunk-based loading.
+    use_trainable_pcen = (
+        config.get("representation", "logmel") == "trainable_pcen"
+    )
+
     # ----------------------------------------------------------------------------------------------------------------
     # Load datasets
     # ----------------------------------------------------------------------------------------------------------------
 
-    train_datasets = [
-        load_dataset(path)
-        for path in train_paths
-    ]
+    if use_trainable_pcen:
+        # Paths point to the dataset root containing mel_recordings/.
+        train_datasets = [
+            MelRecordingDataset(path, split="train")
+            for path in train_paths
+        ]
 
-    validation_datasets = [
-        load_dataset(path)
-        for path in val_paths
-    ]
+        validation_datasets = [
+            MelRecordingDataset(path, split="validation")
+            for path in val_paths
+        ]
+
+    else:
+        # Existing Log-Mel and fixed-PCEN chunk datasets.
+        train_datasets = [
+            load_dataset(path)
+            for path in train_paths
+        ]
+
+        validation_datasets = [
+            load_dataset(path)
+            for path in val_paths
+        ]
 
     train_dataset = ConcatDataset(
         train_datasets
@@ -254,7 +278,7 @@ def _train_trial(config):
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=batch_size,
+        batch_size=1 if use_trainable_pcen else batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=use_pin_memory,
@@ -262,7 +286,7 @@ def _train_trial(config):
 
     validation_loader = DataLoader(
         validation_dataset,
-        batch_size=batch_size,
+        batch_size=1 if use_trainable_pcen else batch_size,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=use_pin_memory,
@@ -296,6 +320,8 @@ def _train_trial(config):
     model = model.to(
         device
     )
+
+    pcen = TrainablePCEN().to(device) if use_trainable_pcen else None
 
     print(
         f"Model: {Model.__name__}"
@@ -370,8 +396,13 @@ def _train_trial(config):
         1e-4,
     )
 
+    parameters_to_optimize = list(model.parameters())
+
+    if use_trainable_pcen:
+        parameters_to_optimize += list(pcen.parameters())
+
     optimizer = Optimizer(
-        model.parameters(),
+        parameters_to_optimize,
         lr=learning_rate,
         weight_decay=weight_decay,
     )
@@ -423,6 +454,9 @@ def _train_trial(config):
 
         model.train()
 
+        if use_trainable_pcen:
+            pcen.train()
+
         total_training_loss = 0.0
 
         total_training_batches = 0
@@ -438,6 +472,27 @@ def _train_trial(config):
                 device,
                 non_blocking=True,
             )
+
+            if use_trainable_pcen:
+                # DataLoader yields [1, time, 84, 1].
+                # Process the entire recording before chunking.
+                if features.shape[0] != 1:
+                    raise RuntimeError(
+                        "Learnable PCEN requires one recording per batch."
+                    )
+
+                features = trainable_pcen_features(
+                    features.squeeze(0),
+                    pcen,
+                )
+
+                # Match CNN chunks: [chunks, 400, 3].
+                labels = labels.reshape(-1, 400, labels.shape[-1])
+
+                if features.shape[0] != labels.shape[0]:
+                    raise RuntimeError(
+                        "PCEN feature chunks and label chunks do not match."
+                    )
 
             if normalizer is not None:
                 features = normalizer(features)
@@ -487,6 +542,9 @@ def _train_trial(config):
 
         model.eval()
 
+        if use_trainable_pcen:
+            pcen.eval()
+
         total_validation_loss = 0.0
 
         total_validation_batches = 0
@@ -508,6 +566,27 @@ def _train_trial(config):
                     device,
                     non_blocking=True,
                 )
+
+                if use_trainable_pcen:
+                    # DataLoader yields [1, time, 84, 1].
+                    # Process the entire recording before chunking.
+                    if features.shape[0] != 1:
+                        raise RuntimeError(
+                            "Learnable PCEN requires one recording per batch."
+                        )
+
+                    features = trainable_pcen_features(
+                        features.squeeze(0),
+                        pcen,
+                    )
+
+                    # Match CNN chunks: [chunks, 400, 3].
+                    labels = labels.reshape(-1, 400, labels.shape[-1])
+
+                    if features.shape[0] != labels.shape[0]:
+                        raise RuntimeError(
+                            "PCEN feature chunks and label chunks do not match."
+                        )
 
                 if normalizer is not None:
                     features = normalizer(features)
@@ -697,6 +776,12 @@ def _train_trial(config):
                 model.state_dict(),
                 checkpoint_path / "model.pt",
             )
+
+            if use_trainable_pcen:
+                torch.save(
+                    pcen.state_dict(),
+                    checkpoint_path / "pcen.pt",
+                )
 
             checkpoint = (
                 train.Checkpoint.from_directory(

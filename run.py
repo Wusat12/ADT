@@ -25,7 +25,9 @@ from ray.tune import Checkpoint
 import torch
 
 from models import CNN
-from preprocess import create_transform, load_dataset
+from preprocess import create_transform, load_dataset, MelRecordingDataset
+from models.trainable_pcen import TrainablePCEN
+from load import trainable_pcen_features
 from train import prepare_features_for_model, train_model
 from evaluate import evaluate_model
 
@@ -60,6 +62,7 @@ def main():
         choices=[
             "enst+mdb",
             "enst+mdb+idmt",
+            "enst_idmt_polyphonic",
             "egmd",
             "slakh",
             "adtof_yt",
@@ -73,6 +76,7 @@ def main():
         choices=[
             "logmel",
             "pcen",
+            "trainable_pcen",
         ],
         default="logmel",
         help="Acoustic representation.",
@@ -145,6 +149,10 @@ def main():
             data_dir
             / "ENST+MDB",
 
+        "enst_idmt_polyphonic":
+            data_dir
+            / "ENST_IDMT_Polyphonic",
+
         "egmd":
             data_dir
             / "e-gmd-v1.0.0",
@@ -167,39 +175,43 @@ def main():
     # Dataset filenames
     # ----------------------------------------------------------------------------------------------------------------
 
-    suffix = (
-        f"_{args.representation}"
-    )
+    if args.representation == "trainable_pcen":
 
-    train_paths = [
-        dataset_path
-        / f"{dataset}{suffix}_train.pt"
-        for dataset_path, dataset
-        in zip(
-            dataset_paths,
-            args.dataset,
-        )
-    ]
+        if args.dataset != ["enst_idmt_polyphonic"]:
+            parser.error(
+                "trainable_pcen currently requires "
+                "--dataset enst_idmt_polyphonic"
+            )
 
-    val_paths = [
-        dataset_path
-        / f"{dataset}{suffix}_validation.pt"
-        for dataset_path, dataset
-        in zip(
-            dataset_paths,
-            args.dataset,
-        )
-    ]
+        # MelRecordingDataset expects the root containing
+        # mel_recordings/train, validation, and test.
+        root = dataset_paths[0]
 
-    test_paths = [
-        dataset_path
-        / f"{dataset}{suffix}_test.pt"
-        for dataset_path, dataset
-        in zip(
-            dataset_paths,
-            args.dataset,
-        )
-    ]
+        train_paths = [root]
+        val_paths = [root]
+        test_paths = [root]
+
+    else:
+
+        suffix = f"_{args.representation}"
+
+        train_paths = [
+            dataset_path / f"{dataset}{suffix}_train.pt"
+            for dataset_path, dataset
+            in zip(dataset_paths, args.dataset)
+        ]
+
+        val_paths = [
+            dataset_path / f"{dataset}{suffix}_validation.pt"
+            for dataset_path, dataset
+            in zip(dataset_paths, args.dataset)
+        ]
+
+        test_paths = [
+            dataset_path / f"{dataset}{suffix}_test.pt"
+            for dataset_path, dataset
+            in zip(dataset_paths, args.dataset)
+        ]
 
     # ----------------------------------------------------------------------------------------------------------------
     # Verify dataset files
@@ -301,59 +313,96 @@ def main():
     )
 
     # ----------------------------------------------------------------------------------------------------------------
-    # Load training datasets
+    # Load training datasets and calculate training-only normalization
     # ----------------------------------------------------------------------------------------------------------------
 
-    train_datasets = [
-        load_dataset(path)
-        for path in train_paths
-    ]
+    if args.representation == "trainable_pcen":
+
+        train_datasets = [
+            MelRecordingDataset(path, split="train")
+            for path in train_paths
+        ]
+
+    else:
+
+        train_datasets = [
+            load_dataset(path)
+            for path in train_paths
+        ]
 
     train_dataset = torch.utils.data.ConcatDataset(
         train_datasets
     )
 
     print(
-        f"\nTraining dataset size: "
-        f"{len(train_dataset)}"
+        f"\\nTraining dataset size: {len(train_dataset)}"
     )
 
-    # ----------------------------------------------------------------------------------------------------------------
-    # Compute normalization statistics
-    # ----------------------------------------------------------------------------------------------------------------
+    print("Computing training-only normalization statistics...")
 
-    print(
-        "Computing normalization statistics..."
-    )
+    if args.representation == "trainable_pcen":
 
-    all_features = []
+        # Statistics are calculated once using initial PCEN parameters.
+        # They remain fixed during training, avoiding validation/test leakage.
+        initial_pcen = TrainablePCEN().cpu().eval()
 
-    for dataset in train_datasets:
+        total_sum = torch.zeros((), dtype=torch.float64)
+        total_square_sum = torch.zeros((), dtype=torch.float64)
+        total_values = 0
 
-        for features, _ in dataset:
+        with torch.no_grad():
 
-            all_features.append(
-                features
-            )
+            for index, (mel, _) in enumerate(train_dataset):
 
-    features = torch.cat(
-        all_features,
-        dim=0,
-    )
+                features = trainable_pcen_features(
+                    mel,
+                    initial_pcen,
+                )
 
-    mean = features.mean()
-    std = features.std()
+                values = features.to(torch.float64)
 
-    print(
-        f"Training mean: {mean}"
-    )
+                total_sum += values.sum()
+                total_square_sum += values.square().sum()
+                total_values += values.numel()
 
-    print(
-        f"Training std: {std}"
-    )
+                if (index + 1) % 25 == 0:
+                    print(
+                        f"  Processed {index + 1}/"
+                        f"{len(train_dataset)} recordings"
+                    )
 
-    del all_features
-    del features
+        if total_values == 0:
+            raise RuntimeError("No training features found.")
+
+        mean64 = total_sum / total_values
+
+        variance64 = (
+            total_square_sum / total_values - mean64.square()
+        ).clamp(min=0.0)
+
+        mean = mean64.float()
+        std = variance64.sqrt().clamp(min=1e-8).float()
+
+    else:
+
+        # Preserve the original chunk-based baseline calculation.
+        all_features = []
+
+        for dataset in train_datasets:
+
+            for features, _ in dataset:
+                all_features.append(features)
+
+        features = torch.cat(all_features, dim=0)
+
+        mean = features.mean()
+        std = features.std()
+
+        del all_features
+        del features
+
+    print(f"Training mean: {mean}")
+    print(f"Training std: {std}")
 
     # ----------------------------------------------------------------------------------------------------------------
     # Ray configuration
@@ -558,10 +607,20 @@ def main():
     # Test dataset
     # ----------------------------------------------------------------------------------------------------------------
 
-    test_datasets = [
-        load_dataset(path)
-        for path in test_paths
-    ]
+    use_trainable_pcen = (
+        args.representation == "trainable_pcen"
+    )
+
+    if use_trainable_pcen:
+        test_datasets = [
+            MelRecordingDataset(root, split="test")
+            for root in test_paths
+        ]
+    else:
+        test_datasets = [
+            load_dataset(path)
+            for path in test_paths
+        ]
 
     test_dataset = torch.utils.data.ConcatDataset(
         test_datasets
@@ -569,13 +628,13 @@ def main():
 
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=args.batch_size,
+        batch_size=1 if use_trainable_pcen else args.batch_size,
         shuffle=False,
         num_workers=0,
     )
 
     # ----------------------------------------------------------------------------------------------------------------
-    # Test transform
+    # Test transform and model
     # ----------------------------------------------------------------------------------------------------------------
 
     test_transform = create_transform(
@@ -584,62 +643,102 @@ def main():
         channels_last=False,
     )
 
-    for dataset in test_datasets:
+    Model = config["Model"]
+    model_parameters = config.get("parameters", {})
 
-        dataset.transform = (
-            test_transform
+    test_model = Model(**model_parameters)
+
+    with best_checkpoint.as_directory() as checkpoint_dir:
+        checkpoint_dir = Path(checkpoint_dir)
+
+        state_dict = torch.load(
+            checkpoint_dir / "model.pt",
+            map_location="cpu",
+            weights_only=True,
         )
+
+        test_model.load_state_dict(state_dict)
+
+        if use_trainable_pcen:
+            pcen_path = checkpoint_dir / "pcen.pt"
+
+            if not pcen_path.is_file():
+                raise FileNotFoundError(
+                    f"Learnable PCEN checkpoint missing: {pcen_path}"
+                )
+
+            learned_pcen = TrainablePCEN()
+            learned_pcen.load_state_dict(
+                torch.load(
+                    pcen_path,
+                    map_location="cpu",
+                    weights_only=True,
+                )
+            )
+
+    if use_trainable_pcen:
+
+        class PCENEvaluationModel(torch.nn.Module):
+            """Evaluate PCEN on full recordings, then use CNN chunks."""
+
+            def __init__(self, cnn, pcen, normalizer):
+                super().__init__()
+                self.cnn = cnn
+                self.pcen = pcen
+                self.normalizer = normalizer
+
+            def forward(self, linear_mel):
+                # Input: [1, recording_frames, 84, 1]
+                if linear_mel.ndim != 4 or linear_mel.shape[0] != 1:
+                    raise ValueError(
+                        "Learnable PCEN evaluation expects one recording."
+                    )
+
+                features = trainable_pcen_features(
+                    linear_mel.squeeze(0),
+                    self.pcen,
+                )
+
+                features = self.normalizer(features)
+                cnn_inputs = prepare_features_for_model(features)
+                outputs = self.cnn(cnn_inputs)
+
+                # Reassemble chunks so onset matching sees a
+                # continuous recording: [1, recording_frames, 3].
+                return outputs.reshape(1, -1, outputs.shape[-1])
+
+        evaluation_model = PCENEvaluationModel(
+            test_model,
+            learned_pcen,
+            test_transform,
+        )
+
+        def test_model_transform(inputs):
+            # The wrapper performs PCEN and normalization.
+            return inputs
+
+    else:
+
+        evaluation_model = test_model
+
+        def test_model_transform(inputs):
+            # Normalize baseline test data just as in training.
+            inputs = test_transform(inputs)
+            return prepare_features_for_model(inputs)
 
     # ----------------------------------------------------------------------------------------------------------------
     # Evaluation
     # ----------------------------------------------------------------------------------------------------------------
 
-    print(
-        "\nEvaluating on test set..."
-    )
+    print("\\nEvaluating on test set...")
 
-    Model = config["Model"]
-
-    model_parameters = config.get(
-        "parameters",
-        {},
-    )
-
-    test_model = Model(
-        **model_parameters
-    )
-
-    with best_checkpoint.as_directory() as checkpoint_dir:
-
-        model_path = (
-            Path(checkpoint_dir)
-            / "model.pt"
+    with torch.no_grad():
+        test_metrics = evaluate_model(
+            evaluation_model,
+            test_loader,
+            test_model_transform,
+            device=device,
         )
-
-        state_dict = torch.load(
-            model_path,
-            map_location=device,
-            weights_only=True,
-        )
-
-    test_model.load_state_dict(
-        state_dict
-    )
-
-    def test_model_transform(inputs):
-
-        inputs = prepare_features_for_model(
-            inputs
-        )
-
-        return inputs
-
-    test_metrics = evaluate_model(
-        test_model,
-        test_loader,
-        test_model_transform,
-        device=device,
-    )
 
     # ----------------------------------------------------------------------------------------------------------------
     # Print test results

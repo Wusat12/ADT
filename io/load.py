@@ -99,7 +99,7 @@ def compute_pcen(
         M[:, t] = s * mel[:, t] + (1.0 - s) * M[:, t - 1]
 
     pcen = (
-        mel / (eps + M.pow(alpha)) + delta
+        mel / (eps + M).pow(alpha) + delta
     ).pow(r) - delta**r
 
     return pcen
@@ -141,6 +141,54 @@ def add_delta_features(features: torch.Tensor) -> torch.Tensor:
     delta = compute_positive_delta(features)
 
     return torch.cat([features, delta], dim=0)
+
+
+
+def trainable_pcen_features(
+    linear_mel: torch.Tensor,
+    pcen: torch.nn.Module,
+    chunk_frames: int = 400,
+) -> torch.Tensor:
+    """
+    Convert full-recording linear Mel to CNN-ready features.
+
+    Input:  [time, 84, 1]
+    Output: [chunks, 400, 168, 1]
+
+    PCEN smoothing and temporal differences are calculated
+    over the full recording before dividing it into chunks.
+    """
+    if linear_mel.ndim != 3 or linear_mel.shape[1:] != (84, 1):
+        raise ValueError(
+            f"Expected linear Mel [time, 84, 1], "
+            f"got {tuple(linear_mel.shape)}"
+        )
+
+    timesteps = linear_mel.shape[0]
+
+    if timesteps == 0 or timesteps % chunk_frames != 0:
+        raise ValueError(
+            "Recording length must be a positive multiple "
+            f"of {chunk_frames} frames."
+        )
+
+    # [time, 84, 1] -> [1, 84, time]
+    mel_input = linear_mel.squeeze(-1).T.unsqueeze(0)
+
+    # Apply trainable PCEN across the entire recording.
+    pcen_output = pcen(mel_input).squeeze(0)
+
+    # Reuse exactly the same delta calculation as the baselines.
+    # [84, time] -> [168, time]
+    features = add_delta_features(pcen_output)
+
+    # [168, time] -> [time, 168]
+    features = features.T.contiguous()
+
+    # Preserve the repository's existing dataset layout.
+    return features.reshape(
+        -1, chunk_frames, 168, 1
+    )
 
 
 def compute_frontend(

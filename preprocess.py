@@ -58,30 +58,49 @@ def create_transform(mean: torch.Tensor, std: torch.Tensor, channels_last: bool)
     return transforms.Compose(composition)
 
 
-def compute_infrequency_weights(dataloader: DataLoader) -> torch.Tensor:
-    """ Compute the infrequency weight of an instrument, given as the 'inverse estimated entropy of their event activity distribution'. """
-    num_classes = None
-    probabilities = None
+def compute_infrequency_weights(dataset) -> torch.Tensor:
+    """
+    Calculate class weights using training labels only.
 
-    num_timesteps = 0.0
-    for _, labels in dataloader:
-        # If probability tensor is not defined, count number of classes and do so
-        if probabilities == None:
-            num_classes = torch.tensor(labels.shape[-1])
-            probabilities = torch.zeros(num_classes)
-        
-        num_timesteps += labels.shape[0] * labels.shape[1]
-        probabilities += torch.sum(labels == 1.0, dim=(0, 1))
-    
-    # Divide to finish computing probabilities
-    probabilities /= num_timesteps
+    Supports:
+        [T, 3]       - one recording or chunk
+        [B, T, 3]    - batched chunks
 
-    # To prevent Nan's, set probabilities of 0 to a very low number
-    probabilities = torch.where(probabilities == 0, torch.tensor(1e-10), probabilities)
+    Keeps the existing inverse-entropy weighting formula.
+    """
+    positive_counts = None
+    total_frames = 0
 
-    # And compute final weights
-    weights = 1.0 / (-probabilities * torch.log(probabilities) - (1.0 - probabilities) * torch.log(1.0 - probabilities))
-    return weights
+    for _, labels in dataset:
+        labels = torch.as_tensor(labels, dtype=torch.float32)
+
+        if labels.ndim not in (2, 3):
+            raise ValueError(
+                f"Unexpected label shape: {tuple(labels.shape)}"
+            )
+
+        labels = labels.reshape(-1, labels.shape[-1])
+
+        if positive_counts is None:
+            positive_counts = torch.zeros(
+                labels.shape[-1], dtype=torch.float64
+            )
+
+        positive_counts += (labels == 1.0).sum(dim=0)
+        total_frames += labels.shape[0]
+
+    if total_frames == 0:
+        raise ValueError("Cannot compute class weights: empty dataset.")
+
+    probabilities = positive_counts / total_frames
+    probabilities = probabilities.clamp(min=1e-10, max=1 - 1e-10)
+
+    entropy = (
+        -probabilities * torch.log(probabilities)
+        -(1 - probabilities) * torch.log(1 - probabilities)
+    )
+
+    return (1.0 / entropy).float()
 
 
 def invert_log_filter_spectrogram(log_filter_spectrogram: torch.Tensor, sr: int = 44100, n_fft: int = 2048, win_length: int = 2048, hop_length: int = 441, f_min: int = 20, f_max: int = 20000, power: int = 1) -> torch.Tensor:
@@ -121,3 +140,65 @@ def invert_mel_spectrogram(mel_spectrogram: torch.Tensor, n_fft: int = 2048, win
     waveform = grifflim_transform(spectrogram)
 
     return waveform
+
+
+class MelRecordingDataset(torch.utils.data.Dataset):
+    """
+    Recording-level linear Mel dataset for trainable PCEN.
+
+    One item = one complete recording.
+
+    Expected directory structure:
+        mel_recordings/train/ENST/*.pt
+        mel_recordings/train/IDMT/*.pt
+        mel_recordings/validation/ENST/*.pt
+        mel_recordings/validation/IDMT/*.pt
+    """
+
+    def __init__(self, root, split):
+        from pathlib import Path
+
+        self.root = Path(root)
+        self.split = split
+
+        self.paths = sorted(
+            (self.root / "mel_recordings" / split).glob("*/*.pt")
+        )
+
+        if not self.paths:
+            raise FileNotFoundError(
+                f"No linear Mel recordings found for {split} "
+                f"in {self.root}"
+            )
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, index):
+        saved = torch.load(
+            self.paths[index],
+            map_location="cpu",
+            weights_only=True,
+        )
+
+        mel = saved["mel"]
+        labels = saved["labels"]
+
+        if mel.ndim != 3 or mel.shape[1:] != (84, 1):
+            raise ValueError(
+                f"Invalid Mel shape: {tuple(mel.shape)}"
+            )
+
+        if labels.shape != (mel.shape[0], 3):
+            raise ValueError(
+                f"Invalid label shape: {tuple(labels.shape)}"
+            )
+
+        if mel.shape[0] == 0 or mel.shape[0] % 400 != 0:
+            raise ValueError(
+                "Recording length must be a positive "
+                "multiple of 400 frames."
+            )
+
+        return mel, labels
+
