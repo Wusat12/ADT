@@ -386,21 +386,54 @@ def main():
 
     else:
 
-        # Preserve the original chunk-based baseline calculation.
-        all_features = []
+        # Compute training-only statistics without concatenating
+        # hundreds of megabytes of precomputed features.
+        print(
+            "Calculating chunk-based normalization...",
+            flush=True,
+        )
 
-        for dataset in train_datasets:
+        total_sum = torch.zeros((), dtype=torch.float64)
+        total_squared = torch.zeros((), dtype=torch.float64)
+        total_count = 0
+        completed = 0
 
-            for features, _ in dataset:
-                all_features.append(features)
+        with torch.no_grad():
+            for dataset in train_datasets:
+                for features, _ in dataset:
+                    values = features.to(torch.float64)
 
-        features = torch.cat(all_features, dim=0)
+                    total_sum += values.sum()
+                    total_squared += values.square().sum()
+                    total_count += values.numel()
+                    completed += 1
 
-        mean = features.mean()
-        std = features.std()
+                    if completed % 200 == 0:
+                        print(
+                            f"  Normalized statistics: "
+                            f"{completed}/{len(train_dataset)} chunks",
+                            flush=True,
+                        )
 
-        del all_features
-        del features
+        if total_count < 2:
+            raise RuntimeError(
+                "Not enough training values for normalization."
+            )
+
+        mean64 = total_sum / total_count
+
+        # Match torch.std() default: unbiased sample variance.
+        variance64 = (
+            total_squared - total_count * mean64.square()
+        ) / (total_count - 1)
+
+        mean = mean64.float()
+        std = variance64.clamp(min=1e-16).sqrt().float()
+
+        print(
+            f"Normalization completed for {completed} chunks.",
+            flush=True,
+        )
 
     print(f"Training mean: {mean}")
     print(f"Training std: {std}")
@@ -515,7 +548,7 @@ def main():
         ray.init(
             ignore_reinit_error=True,
             include_dashboard=False,
-            num_cpus=1,
+            num_cpus=2,
             num_gpus=(
                 1
                 if torch.cuda.is_available()
