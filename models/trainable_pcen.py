@@ -4,6 +4,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+
+@torch.jit.script
+def _scripted_pcen_smoothing(
+    mel: torch.Tensor,
+    s: torch.Tensor,
+) -> torch.Tensor:
+    """First-order recursive smoother, preserving gradients."""
+    frames = [mel[:, :, 0]]
+
+    for t in range(1, mel.size(2)):
+        current = (
+            s * mel[:, :, t]
+            + (1.0 - s) * frames[-1]
+        )
+        frames.append(current)
+
+    return torch.stack(frames, dim=-1)
+
+
 class TrainablePCEN(nn.Module):
     """
     Trainable Per-Channel Energy Normalization.
@@ -75,18 +94,8 @@ class TrainablePCEN(nn.Module):
         delta = params["delta"]
         r = params["r"]
 
-        # Differentiable temporal smoothing.
-        smoothed_frames = [mel[:, :, 0]]
-
-        for t in range(1, mel.shape[-1]):
-            current = (
-                s * mel[:, :, t]
-                + (1.0 - s) * smoothed_frames[-1]
-            )
-
-            smoothed_frames.append(current)
-
-        M = torch.stack(smoothed_frames, dim=-1)
+        # TorchScript-compiled differentiable temporal smoothing.
+        M = _scripted_pcen_smoothing(mel, s)
 
         # Standard PCEN equation.
         pcen = (

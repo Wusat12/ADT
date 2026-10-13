@@ -553,6 +553,8 @@ def _train_trial(config):
 
         all_labels = []
 
+        recording_predictions = torch.zeros(3, 3)
+
         with torch.no_grad():
 
             for features, labels in validation_loader:
@@ -614,13 +616,28 @@ def _train_trial(config):
 
                 total_validation_batches += 1
 
-                all_activations.append(
-                    activations.detach().cpu()
-                )
+                probabilities = torch.sigmoid(
+                    activations.detach()
+                ).cpu()
 
-                all_labels.append(
-                    labels.detach().cpu()
-                )
+                if use_trainable_pcen:
+                    recording_probabilities = probabilities.reshape(
+                        1, -1, 3
+                    )
+
+                    recording_labels = labels.detach().cpu().reshape(
+                        1, -1, 3
+                    )
+
+                    recording_predictions += compute_predictions(
+                        compute_peaks(recording_probabilities),
+                        recording_labels,
+                        w=5,
+                    )
+
+                else:
+                    all_activations.append(probabilities)
+                    all_labels.append(labels.detach().cpu())
 
         validation_loss = (
             total_validation_loss
@@ -630,33 +647,37 @@ def _train_trial(config):
             )
         )
 
-        all_activations = torch.cat(
-            all_activations,
-            dim=0,
-        )
-
-        all_labels = torch.cat(
-            all_labels,
-            dim=0,
-        )
-
         # ============================================================================================================
         # Event-based evaluation
         # ============================================================================================================
 
-        peaks = compute_peaks(
-            all_activations,
-            m=2,
-            o=2,
-            w=2,
-            delta=0.1,
-        )
+        if use_trainable_pcen:
+            predictions = recording_predictions
 
-        predictions = compute_predictions(
-            peaks,
-            all_labels,
-            w=5,
-        )
+        else:
+            all_activations = torch.cat(
+                all_activations,
+                dim=0,
+            )
+
+            all_labels = torch.cat(
+                all_labels,
+                dim=0,
+            )
+
+            peaks = compute_peaks(
+                all_activations,
+                m=2,
+                o=2,
+                w=2,
+                delta=0.1,
+            )
+
+            predictions = compute_predictions(
+                peaks,
+                all_labels,
+                w=5,
+            )
 
         val_f1_micro, val_f1_macro, val_f1_class = (
             f_measure(

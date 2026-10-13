@@ -77,6 +77,7 @@ def main():
             "logmel",
             "pcen",
             "trainable_pcen",
+            "optimized_pcen",
         ],
         default="logmel",
         help="Acoustic representation.",
